@@ -6,3 +6,10 @@
 
 /* Update UI */
 .versionbadge{display:inline-flex;align-items:center;justify-content:center;background:#edf3ef;color:#31594d;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800}.updatecard p{font-size:12px;line-height:1.45;color:var(--muted)}.updatenotes{background:#f5f7f5;border-radius:12px;padding:10px;margin:8px 0;font-size:11px;line-height:1.45;white-space:pre-wrap}.updatecard .primary[disabled],.updatecard button[disabled]{opacity:.55;pointer-events:none}
+
+/* V1.1.2: längere Inspirationen, Stadtplanung und mobile Planer-Aktionen */
+.scrollsuggestions{max-height:390px;overflow-y:auto;overscroll-behavior:contain;padding-right:3px;scrollbar-width:thin;scrollbar-color:#b9c5c0 transparent}
+.scrollsuggestions::-webkit-scrollbar{width:5px}.scrollsuggestions::-webkit-scrollbar-thumb{background:#b9c5c0;border-radius:99px}
+.sectionhint{margin:-4px 0 7px;line-height:1.4}.discovergrid .card{min-width:0}.citysuggestion .thumb{display:grid;place-items:center;font-size:21px;background:#eaf1f5}.suggestion .suggestionactions{display:flex;gap:5px;align-items:center}.suggestion .suggestionactions button{white-space:nowrap}
+.accommodationcard{border-color:#c9b79a;background:#fffaf2}.transfercard{border-color:#a9c6cf;background:#f5fbfc}.stopmeta .lodgingmeta{display:block;margin-top:3px}.plannertopactions{justify-content:flex-end}.city-poi-list{max-height:44vh;overflow:auto;border-top:1px solid #eef0ef;margin-top:8px}.city-poi-list .searchitem label{display:flex;align-items:center;gap:7px}.transfer-mode-note{font-size:10.5px;color:var(--muted);margin-top:6px}.wideactions{display:flex;gap:7px;overflow-x:auto;padding-bottom:3px}.wideactions button{white-space:nowrap}
+@media(max-width:560px){.pagehead{display:block}.pagehead>.actions{margin-top:9px}.plannertopactions{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}.plannertopactions button{white-space:nowrap}.suggestion{grid-template-columns:44px minmax(0,1fr) auto}.suggestionactions{flex-direction:column}.suggestionactions button{font-size:10px;padding:6px 7px}.scrollsuggestions{max-height:330px}}

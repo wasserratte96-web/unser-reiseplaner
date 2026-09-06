@@ -21,6 +21,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+import android.widget.FrameLayout;
+import android.view.ViewGroup;
 
 import org.json.JSONObject;
 
@@ -55,16 +57,25 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         database = new DatabaseHelper(this);
 
+        // Android 15/16 erzwingt für targetSdk >= 35 Edge-to-Edge.
+        // Padding direkt auf einer WebView ist je nach WebView-Version unzuverlässig.
+        // Deshalb liegt die WebView in einem Root-Container und bekommt echte Layout-Margins
+        // in Höhe der Status-/Navigationsleisten und Display-Cutouts.
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.rgb(248, 247, 243));
+        setContentView(root);
+
         webView = new WebView(this);
         webView.setBackgroundColor(Color.rgb(248, 247, 243));
-        setContentView(webView);
+        FrameLayout.LayoutParams webParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        root.addView(webView, webParams);
 
-        // Android 15/16: targetSdk >= 35 läuft zwingend edge-to-edge.
-        // Die WebView erhält deshalb die realen Systemleisten-/Cutout-Inset als Padding.
-        webView.setOnApplyWindowInsetsListener((view, insets) -> {
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
             int left, top, right, bottom;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                android.graphics.Insets bars = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 left = bars.left; top = bars.top; right = bars.right; bottom = bars.bottom;
             } else {
                 left = insets.getSystemWindowInsetLeft();
@@ -72,10 +83,14 @@ public class MainActivity extends Activity {
                 right = insets.getSystemWindowInsetRight();
                 bottom = insets.getSystemWindowInsetBottom();
             }
-            view.setPadding(left, top, right, bottom);
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) webView.getLayoutParams();
+            if (lp.leftMargin != left || lp.topMargin != top || lp.rightMargin != right || lp.bottomMargin != bottom) {
+                lp.setMargins(left, top, right, bottom);
+                webView.setLayoutParams(lp);
+            }
             return insets;
         });
-        webView.requestApplyInsets();
+        root.requestApplyInsets();
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
 
@@ -87,7 +102,7 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.1.1");
+        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.1.2");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -205,7 +220,7 @@ public class MainActivity extends Activity {
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(60000);
                 connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.1.1 Android updater");
+                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.1.2 Android updater");
                 int status = connection.getResponseCode();
                 if (status < 200 || status >= 300) throw new IllegalStateException("HTTP " + status);
 
@@ -303,7 +318,7 @@ public class MainActivity extends Activity {
                     connection.setInstanceFollowRedirects(true);
                     connection.setRequestProperty("Accept", "application/json,text/plain,*/*");
                     connection.setRequestProperty("Accept-Language", "de-DE,de;q=0.9,en;q=0.7");
-                    String agent = "UnserReiseplanerBot/1.1.1 (https://github.com/wasserratte96-web/unser-reiseplaner)";
+                    String agent = "UnserReiseplanerBot/1.1.2 (https://github.com/wasserratte96-web/unser-reiseplaner)";
                     connection.setRequestProperty("User-Agent", agent);
                     if (target.getHost().endsWith("wikipedia.org") || target.getHost().endsWith("wikimedia.org") || target.getHost().endsWith("wikidata.org")) {
                         connection.setRequestProperty("Api-User-Agent", agent);

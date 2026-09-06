@@ -34,15 +34,16 @@
           <div><div class="eyebrow">Aktives Reiseziel</div><h2 id="discoverDestination">–</h2><p id="discoverDates">Noch kein Zeitraum gewählt.</p></div>
           <button class="primary" id="discoverBtn">Inspiration laden</button>
         </div>
-        <div class="grid2">
-          <div class="card"><div class="sectiontitle"><span>★ Top-Sehenswürdigkeiten</span><button class="textbtn" id="reloadPoiBtn">neu laden</button></div><div id="poiSuggestions" class="suggestions empty">Noch nicht geladen.</div></div>
-          <div class="card"><div class="sectiontitle"><span>🐾 Wildlife</span><button class="textbtn" id="reloadWildBtn">neu laden</button></div><div id="wildSuggestions" class="suggestions empty">Noch nicht geladen.</div></div>
+        <div class="grid2 discovergrid">
+          <div class="card"><div class="sectiontitle"><span>🏙 Sehenswerte Städte</span><button class="textbtn" id="reloadCitiesBtn">neu laden</button></div><p class="tiny sectionhint">Große bzw. bekannte Städte als Ausgangspunkte. Tippe auf „Entdecken“, um konkrete Sehenswürdigkeiten und einen Rundgang zu planen.</p><div id="citySuggestions" class="suggestions scrollsuggestions empty">Noch nicht geladen.</div></div>
+          <div class="card"><div class="sectiontitle"><span>★ Nationale Highlights</span><button class="textbtn" id="reloadPoiBtn">neu laden</button></div><p class="tiny sectionhint">Landesweite Sehenswürdigkeiten, Naturziele und Wahrzeichen – unabhängig von einer einzelnen Stadt.</p><div id="poiSuggestions" class="suggestions scrollsuggestions empty">Noch nicht geladen.</div></div>
+          <div class="card"><div class="sectiontitle"><span>🐾 Wildlife</span><button class="textbtn" id="reloadWildBtn">neu laden</button></div><p class="tiny sectionhint">Häufig gemeldete Säugetiere im gewählten Reiseziel und – soweit möglich – passend zum Reisemonat.</p><div id="wildSuggestions" class="suggestions scrollsuggestions empty">Noch nicht geladen.</div></div>
         </div>
         <div class="card"><div class="sectiontitle"><span>Interessen</span></div><div id="interestChips" class="chips"></div></div>
       </section>
 
       <section class="view" id="view-plan">
-        <div class="pagehead"><div><h1>Planer</h1><p>Tage, Stopps, Flüge und verfügbare Zeit.</p></div><div class="actions"><button id="addFlightBtn">✈ Flug</button><button class="primary" id="addStopBtn">+ Stopp</button></div></div>
+        <div class="pagehead"><div><h1>Planer</h1><p>Tage, Stopps, Unterkünfte, Flüge und verfügbare Zeit.</p></div><div class="actions plannertopactions"><button id="addFlightBtn">✈ Flug</button><button id="addAccommodationBtn">🛏 Unterkunft</button><button id="addTransferBtn">↔ Flughafentransfer</button><button class="primary" id="addStopBtn">+ Stopp</button></div></div>
         <div id="planSummary" class="summarystrip"></div>
         <div id="daysTimeline" class="timeline"></div>
       </section>

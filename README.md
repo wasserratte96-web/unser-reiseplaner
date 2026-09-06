@@ -1,24 +1,23 @@
 # Unser Reiseplaner
 
-Private Android-App zur Planung von Roadtrips und Reisen weltweit.
+Private, lokal installierbare Android-Reiseplanungs-App mit kostenlosen öffentlichen Datenquellen.
 
-## Aktueller Stand
-Version 1.1.0 ergänzt eine vollständige Update-Infrastruktur für das öffentliche Repository:
+## Version 1.1.2
 
-https://github.com/wasserratte96-web/unser-reiseplaner
+Schwerpunkte dieser Version:
 
-Enthalten sind:
-- Reise- und Versionsverwaltung
-- Tagesplanung, Stopps, Flüge und Zeitbilanz
-- Karten- und Routingfunktionen
-- Sehenswürdigkeiten- und Wildlife-Discovery über kostenlose Datenquellen
-- lokale SQLite-Speicherung und JSON-Backups
-- GitHub-Actions-Builds
-- dauerhaft signierbare Release-APKs
-- In-App-Prüfung auf GitHub Releases
-- In-App-Download und Übergabe an den Android-Installer
+- getrennte Inspiration für sehenswerte Städte, nationale Highlights und Wildlife
+- längere, scrollbare Empfehlungslisten
+- Stadt-Detailansicht mit konkreten Sehenswürdigkeiten und Übernahme als Sightseeing-Tour
+- Unterkünfte (Hotel, Airbnb/Ferienwohnung, Hostel, Camping) mit Check-in/Check-out
+- Flughafentransfers zwischen Ankunftsflug und Unterkunft
+- ÖPNV, Mietwagen, Uber/Rideshare, Taxi und Auto als Transfermodi
+- Transferzeit fließt in die verfügbare Sightseeing-Zeit ein
+- robuster Android-15/16-Systemleisten-Fix mit nativen Insets
+- mehrere Reisen, Versionen, Tagesplanung, Routing, Wildlife, Karten und In-App-Updates
 
-## Wichtig
-Keystore-Dateien (`*.jks`, `*.keystore`) und Passwörter dürfen niemals in dieses Repository committed werden. Die `.gitignore` blockiert die üblichen Dateinamen zusätzlich.
+## Kostenlos verwendete Datenquellen
 
-Die einmalige Update-Einrichtung ist in `UPDATE_EINRICHTUNG_GITHUB.md` beschrieben.
+OpenStreetMap/Nominatim, Overpass, OSRM, Wikipedia/Wikimedia Commons, iNaturalist, ADSBDB und GitHub Releases.
+
+Hinweis: Globales ÖPNV-Routing mit echten Fahrplänen ist ohne kommerziellen bzw. regionalen Anbieter nicht überall zuverlässig verfügbar. Deshalb wird die ÖPNV-Transferdauer derzeit als editierbare Näherung berechnet.
