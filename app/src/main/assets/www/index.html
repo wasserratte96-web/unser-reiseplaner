@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#f8f7f3">
+  <title>Unser Reiseplaner</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brandrow">
+        <div class="brandmark">⌁</div>
+        <div><div class="brand">Unser Reiseplaner</div><div id="syncState" class="tiny">lokal gespeichert</div></div>
+        <button class="iconbtn" id="refreshBtn" title="Daten neu laden">↻</button>
+      </div>
+      <div class="contextrow">
+        <select id="tripSelect" aria-label="Reise"></select>
+        <select id="versionSelect" aria-label="Version"></select>
+      </div>
+    </header>
+
+    <main>
+      <section class="view active" id="view-trips">
+        <div class="pagehead"><div><h1>Reisen</h1><p>Reiseziele, Zeiträume und Varianten verwalten.</p></div><button class="primary" id="newTripBtn">+ Reise</button></div>
+        <div id="tripCards" class="cardstack"></div>
+      </section>
+
+      <section class="view" id="view-discover">
+        <div class="pagehead"><div><h1>Entdecken</h1><p>Automatische Inspiration für dein Reiseziel.</p></div></div>
+        <div class="hero card">
+          <div><div class="eyebrow">Aktives Reiseziel</div><h2 id="discoverDestination">–</h2><p id="discoverDates">Noch kein Zeitraum gewählt.</p></div>
+          <button class="primary" id="discoverBtn">Inspiration laden</button>
+        </div>
+        <div class="grid2">
+          <div class="card"><div class="sectiontitle"><span>★ Top-Sehenswürdigkeiten</span><button class="textbtn" id="reloadPoiBtn">neu laden</button></div><div id="poiSuggestions" class="suggestions empty">Noch nicht geladen.</div></div>
+          <div class="card"><div class="sectiontitle"><span>🐾 Wildlife</span><button class="textbtn" id="reloadWildBtn">neu laden</button></div><div id="wildSuggestions" class="suggestions empty">Noch nicht geladen.</div></div>
+        </div>
+        <div class="card"><div class="sectiontitle"><span>Interessen</span></div><div id="interestChips" class="chips"></div></div>
+      </section>
+
+      <section class="view" id="view-plan">
+        <div class="pagehead"><div><h1>Planer</h1><p>Tage, Stopps, Flüge und verfügbare Zeit.</p></div><div class="actions"><button id="addFlightBtn">✈ Flug</button><button class="primary" id="addStopBtn">+ Stopp</button></div></div>
+        <div id="planSummary" class="summarystrip"></div>
+        <div id="daysTimeline" class="timeline"></div>
+      </section>
+
+      <section class="view mapview" id="view-map">
+        <div class="maptoolbar">
+          <button id="fitMapBtn">⌖ Alles</button>
+          <button id="mapFilterBtn">☷ Filter</button>
+          <div id="mapDayChips" class="mapdaychips"></div>
+        </div>
+        <div id="map"></div>
+        <div id="mapHint" class="maphint">Karte wird geladen …</div>
+      </section>
+
+      <section class="view" id="view-compare">
+        <div class="pagehead"><div><h1>Versionen vergleichen</h1><p>Was ändert sich zwischen zwei Varianten?</p></div></div>
+        <div class="card comparepickers"><select id="compareA"></select><span>↔</span><select id="compareB"></select></div>
+        <div id="compareResult"></div>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="pagehead"><div><h1>Einstellungen</h1><p>Backups, Datenquellen und App-Informationen.</p></div></div>
+        <div class="card"><div class="sectiontitle">Datensicherung</div><p>Alle Reisen werden lokal in SQLite gespeichert. Exportiere zusätzlich regelmäßig ein JSON-Backup.</p><div class="actions"><button class="primary" id="exportBtn">Backup exportieren</button><label class="buttonlike">Backup importieren<input type="file" id="importFile" accept="application/json,.json" hidden></label></div></div>
+        <div class="card"><div class="sectiontitle">Kostenlose Datenquellen</div><div class="sourcegrid"><div><b>OpenStreetMap</b><small>Karte & Ortsdaten</small></div><div><b>Nominatim</b><small>Ortssuche</small></div><div><b>OSRM</b><small>Autostrecken</small></div><div><b>Wikidata/Wikipedia</b><small>Sehenswürdigkeiten</small></div><div><b>iNaturalist</b><small>Wildlife-Beobachtungen</small></div><div><b>Overpass</b><small>Öffnungszeiten/POIs</small></div><div><b>Wikimedia Commons</b><small>Fotos</small></div><div><b>ADSBDB</b><small>Flugroute per Flugnummer*</small></div></div><p class="tiny">* Zukünftige konkrete Flugzeiten sind bei kostenlosen No-Key-Datenquellen nicht zuverlässig verfügbar und werden deshalb manuell erfasst.</p></div>
+        <div class="card"><div class="sectiontitle">Planungsstandard</div><div class="formgrid"><label>Tagesstart<input id="defaultStart" type="time" value="08:00"></label><label>Tagesende<input id="defaultEnd" type="time" value="20:00"></label><label>Flughafenpuffer Ankunft (min)<input id="arrivalBuffer" type="number" min="0" value="60"></label><label>Flughafenpuffer Abflug (min)<input id="departureBuffer" type="number" min="0" value="120"></label></div><button id="saveSettingsBtn" class="primary">Speichern</button></div>
+        <div class="card updatecard">
+          <div class="sectiontitle"><span>App-Updates</span><span id="installedVersion" class="versionbadge">–</span></div>
+          <p id="updateStatus">Installierte Version wird ermittelt …</p>
+          <div id="updateNotes" class="updatenotes hidden"></div>
+          <div class="actions">
+            <button id="checkUpdateBtn">Nach Updates suchen</button>
+            <button id="installUpdateBtn" class="primary hidden">Update installieren</button>
+          </div>
+          <p class="tiny">Updates werden ausschließlich aus dem öffentlichen GitHub-Repository <b>wasserratte96-web/unser-reiseplaner</b> geladen. Vor der Installation legt die App automatisch ein JSON-Backup an.</p>
+        </div>
+        <div class="card"><div class="sectiontitle">Unser Reiseplaner</div><p id="versionInfo">Private Android-App. Keine Konten, kein Tracking, keine kostenpflichtigen APIs.</p></div>
+      </section>
+    </main>
+
+    <nav class="bottomnav">
+      <button data-view="trips" class="active"><span>▣</span><small>Reisen</small></button>
+      <button data-view="discover"><span>✦</span><small>Entdecken</small></button>
+      <button data-view="plan"><span>☷</span><small>Planer</small></button>
+      <button data-view="map"><span>⌖</span><small>Karte</small></button>
+      <button data-view="compare"><span>⇄</span><small>Vergleich</small></button>
+      <button data-view="settings"><span>⚙</span><small>Mehr</small></button>
+    </nav>
+  </div>
+
+  <div id="modal" class="modal hidden"><div class="modalbackdrop" data-close="1"></div><div class="sheet"><div class="sheethandle"></div><div id="modalContent"></div></div></div>
+  <div id="toast" class="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

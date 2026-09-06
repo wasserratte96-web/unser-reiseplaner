@@ -1,0 +1,16 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+
+# Signing secrets - niemals committen
+*.jks
+*.keystore
+keystore-base64.txt
+release-signing.properties
+
+# OS
+.DS_Store
+Thumbs.db

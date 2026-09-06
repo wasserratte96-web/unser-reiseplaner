@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+}
+
+def ciVersionName = (project.findProperty('ciVersionName') ?: '1.1.0').toString()
+def ciVersionCode = (project.findProperty('ciVersionCode') ?: '2').toString().toInteger()
+def signingPath = System.getenv('URP_KEYSTORE_PATH')
+
+android {
+    namespace 'de.unserreiseplaner.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'de.unserreiseplaner.app'
+        minSdk 29
+        targetSdk 36
+        versionCode ciVersionCode
+        versionName ciVersionName
+    }
+
+    signingConfigs {
+        release {
+            if (signingPath) {
+                storeFile file(signingPath)
+                storePassword System.getenv('URP_STORE_PASSWORD')
+                keyAlias System.getenv('URP_KEY_ALIAS')
+                keyPassword System.getenv('URP_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (signingPath) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
