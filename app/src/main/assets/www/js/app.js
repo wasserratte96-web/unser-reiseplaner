@@ -13,7 +13,7 @@ const STOP_ICONS = {sight:'★',wildlife:'🐾',city:'🏙',nature:'🌿',food:'
 
 const UPDATE_REPOSITORY = 'wasserratte96-web/unser-reiseplaner';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`;
-let installedAppVersion = {versionName:'1.1.4',versionCode:6,repository:UPDATE_REPOSITORY};
+let installedAppVersion = {versionName:'1.1.5',versionCode:7,repository:UPDATE_REPOSITORY};
 let availableUpdate = null;
 
 let state = null;
@@ -25,6 +25,7 @@ let mapDayVisible = new Set();
 let saveTimer = null;
 let currentView = 'trips';
 const discoverVisible = {cities:5,attractions:5,wildlife:5};
+const verifiedEnrichmentPending=new Set();
 
 const NativeHttp = window.NativeHttp = {
   pending:new Map(),
@@ -68,7 +69,7 @@ function haversine(a,b){const R=6371,rad=x=>x*Math.PI/180;const dLat=rad(b.lat-a
 function normalizeName(x){return String(x||'').trim().toLowerCase();}
 
 function defaultSettings(){return {defaultStart:'08:00',defaultEnd:'20:00',arrivalBuffer:60,departureBuffer:120};}
-function emptyState(){return {schema:3,activeTripId:null,settings:defaultSettings(),trips:[],cache:{places:{},cities:{},wikidata:{},wildlife:{},photos:{}}};}
+function emptyState(){return {schema:4,activeTripId:null,settings:defaultSettings(),trips:[],cache:{places:{},cities:{},wikidata:{},wildlife:{},photos:{}}};}
 
 function sampleTrip(){
   const start='2027-04-10';
@@ -100,7 +101,14 @@ function loadState(){
   try{ if(window.AndroidBridge?.loadState) raw=AndroidBridge.loadState(); else raw=localStorage.getItem('urp_state')||''; }catch(e){}
   if(raw){ try{state=JSON.parse(raw);}catch(e){state=null;} }
   if(!state||!state.trips){state=emptyState(); const t=sampleTrip(); state.trips.push(t); state.activeTripId=t.id;}
-  state.settings={...defaultSettings(),...(state.settings||{})}; state.cache=state.cache||{};state.cache.places=state.cache.places||{};state.cache.cities=state.cache.cities||{};state.cache.wikidata=state.cache.wikidata||{};state.cache.wildlife=state.cache.wildlife||{};state.cache.photos=state.cache.photos||{};for(const t of state.trips||[])for(const v of t.versions||[]){v.transfers=v.transfers||[];v.connections=v.connections||[];for(const tr of v.transfers){if(!tr.sourceRef&&tr.flightId)tr.sourceRef=`flight:${tr.flightId}`;}}state.schema=3;
+  const oldSchema=+state.schema||0;
+  state.settings={...defaultSettings(),...(state.settings||{})}; state.cache=state.cache||{};state.cache.places=state.cache.places||{};state.cache.cities=state.cache.cities||{};state.cache.wikidata=state.cache.wikidata||{};state.cache.wildlife=state.cache.wildlife||{};state.cache.photos=state.cache.photos||{};
+  if(oldSchema<4){
+    state.cache.photos={};
+    for(const k of Object.keys(state.cache.cities))if(!k.startsWith('cities:v5:'))delete state.cache.cities[k];
+    for(const k of Object.keys(state.cache.wikidata))if(k.startsWith('attr:v3:')||k.startsWith('place:'))delete state.cache.wikidata[k];
+  }
+  for(const t of state.trips||[])for(const v of t.versions||[]){v.transfers=v.transfers||[];v.connections=v.connections||[];for(const tr of v.transfers){if(!tr.sourceRef&&tr.flightId)tr.sourceRef=`flight:${tr.flightId}`;}}state.schema=4;
 }
 function persistSoon(){
   $('#syncState').textContent='speichert …'; clearTimeout(saveTimer); saveTimer=setTimeout(()=>{
@@ -117,41 +125,48 @@ function showModal(html,onReady){$('#modalContent').innerHTML=html;$('#modal').c
 function closeModal(){$('#modal').classList.add('hidden');$('#modalContent').innerHTML=''}
 
 // ------------------------- Free data providers -------------------------
+const OVERPASS_ENDPOINTS=[
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+];
+const MATCH_STOPWORDS=new Set(['the','and','und','der','die','das','of','von','in','at','a','an','museum','museums','park','centre','center','building','house','memorial','gallery','national','royal','city','stadt','station']);
+function matchNormalize(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
+function matchTokens(s){const all=matchNormalize(s).split(/\s+/).filter(x=>x.length>1),sig=all.filter(x=>!MATCH_STOPWORDS.has(x));return sig.length?sig:all}
+function nameMatchScore(name,text){const n=matchNormalize(name),t=matchNormalize(text);if(!n||!t)return 0;if(t.includes(n))return 1;const toks=matchTokens(name);if(!toks.length)return 0;const hits=toks.filter(x=>t.includes(x)).length;return hits/toks.length}
+function parseWikiRef(value){
+  const v=String(value||'').trim();if(!v)return null;
+  try{if(/^https?:\/\//i.test(v)){const u=new URL(v),m=u.hostname.match(/^([a-z-]+)\.wikipedia\.org$/i);if(m)return{lang:m[1],title:decodeURIComponent(u.pathname.replace(/^\/wiki\//,'').replace(/_/g,' '))};}}catch(e){}
+  const m=v.match(/^([a-z-]+):(.+)$/i);return m?{lang:m[1].toLowerCase(),title:m[2].replace(/_/g,' ')}:null;
+}
+function inBBox(lat,lng,bbox,margin=.15){if(!bbox||bbox.length!==4)return true;const[s,n,w,e]=bbox,dy=(n-s)*margin,dx=(e-w)*margin;return lat>=s-dy&&lat<=n+dy&&lng>=w-dx&&lng<=e+dx}
+function cleanWikiFileTitle(s){return String(s||'').replace(/^File:/i,'')}
+function isUsefulPhotoTitle(s){return !/(?:logo|icon|pictogram|locator|location map|route map|map of|flag of|coat of arms|crest|seal|wordmark|wikidata|commons-logo|symbol|diagram|floor plan|site plan|\.svg$)/i.test(String(s||''))}
+
 const Providers={
   async geocode(q,limit=8){
-    const key=normalizeName(q); if(state.cache.places[key])return state.cache.places[key];
+    const key=`geo:v2:${normalizeName(q)}`; if(state.cache.places[key])return state.cache.places[key];
     const u=`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&limit=${limit}&q=${encodeURIComponent(q)}`;
     const j=await apiJson(u); const out=j.map(x=>({name:x.namedetails?.name||x.display_name.split(',')[0],display:x.display_name,lat:+x.lat,lng:+x.lon,type:x.type,category:x.category,address:x.address||{},extratags:x.extratags||{},bbox:x.boundingbox?.map(Number)}));
     state.cache.places[key]=out;persistSoon();return out;
   },
-  async cities(destination){
-    const key=`cities:${normalizeName(destination)}`,cached=state.cache.cities[key];if(Array.isArray(cached)&&cached.length)return cached;
-    let out=[],lastError=null;
-    try{
-      const geo=await this.geocode(destination,3),g=geo[0];
-      if(g?.bbox?.length===4){
-        const [south,north,west,east]=g.bbox;
-        const q=`[out:json][timeout:25];node[place=city][name](${south},${west},${north},${east});out tags 120;`;
-        const u=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
-        const j=await apiJson(u);
-        out=(j.elements||[]).map(e=>{const t=e.tags||{};return{name:t['name:de']||t.name||'',lat:+e.lat,lng:+e.lon,population:+String(t.population||'0').replace(/[^0-9]/g,''),capital:t.capital||'',country:destination};}).filter(x=>x.name&&Number.isFinite(x.lat)&&Number.isFinite(x.lng));
-        out.sort((a,b)=>(b.population||0)-(a.population||0)||Number(Boolean(b.capital))-Number(Boolean(a.capital)));
-      }
-    }catch(e){lastError=e;}
-    if(out.length<5){
-      try{
-        const terms=[`${destination} Hauptstadt`,`${destination} Großstadt`,`${destination} Stadt`],seen=new Set(out.map(x=>normalizeName(x.name)));
-        for(const term of terms){
-          const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrnamespace=0&gsrlimit=30&prop=coordinates|info&inprop=url&format=json&formatversion=2&origin=*`;
-          const j=await apiJson(u);
-          for(const p of j.query?.pages||[]){const c=p.coordinates?.[0],name=p.title||'';if(!c||!name||seen.has(normalizeName(name))||/Liste|Geschichte|Geographie|Tourismus/i.test(name))continue;seen.add(normalizeName(name));out.push({name,lat:+c.lat,lng:+c.lon,population:0,country:destination,wiki:p.fullurl||''});}
-          if(out.length>=30)break;
-        }
-      }catch(e){lastError=e;}
+  async overpassJson(query){
+    const errors=[];
+    for(const endpoint of OVERPASS_ENDPOINTS){
+      try{return await apiJson(`${endpoint}?data=${encodeURIComponent(query)}`)}catch(e){errors.push(e.message)}
     }
-    const uniq=new Map();out.forEach(x=>{if(!uniq.has(normalizeName(x.name)))uniq.set(normalizeName(x.name),x)});out=[...uniq.values()].slice(0,30);
-    if(!out.length)throw new Error(`Städte konnten nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
-    state.cache.cities[key]=out;persistSoon();return out;
+    throw new Error(`OpenStreetMap/Overpass ist vorübergehend nicht erreichbar. ${errors.slice(-1)[0]||''}`.trim());
+  },
+  async cities(destination){
+    const key=`cities:v5:${normalizeName(destination)}`,cached=state.cache.cities[key];if(Array.isArray(cached)&&cached.length)return cached;
+    const geo=await this.geocode(destination,3),g=geo[0];if(!g?.bbox?.length)throw new Error('Landesgrenzen konnten nicht bestimmt werden.');
+    const[south,north,west,east]=g.bbox;
+    const q=`[out:json][timeout:14];nwr[place=city][name](${south},${west},${north},${east});out tags center 160;`;
+    const j=await this.overpassJson(q),out=[];
+    for(const e of j.elements||[]){const t=e.tags||{},lat=e.lat??e.center?.lat,lng=e.lon??e.center?.lon,name=t['name:de']||t.name||'';if(!name||!Number.isFinite(+lat)||!Number.isFinite(+lng)||!inBBox(+lat,+lng,g.bbox,0))continue;out.push({name,lat:+lat,lng:+lng,population:+String(t.population||'0').replace(/[^0-9]/g,''),capital:t.capital||'',country:destination,wikiTag:t.wikipedia||'',wikidata:t.wikidata||'',photo:'',summary:'',tags:t});}
+    const uniq=new Map();out.sort((a,b)=>(b.population||0)-(a.population||0)||Number(Boolean(b.capital))-Number(Boolean(a.capital))).forEach(x=>{if(!uniq.has(normalizeName(x.name)))uniq.set(normalizeName(x.name),x)});
+    const result=[...uniq.values()].slice(0,30);if(!result.length)throw new Error('Keine eindeutig als Stadt markierten OpenStreetMap-Orte gefunden.');
+    state.cache.cities[key]=result;persistSoon();return result;
   },
   async countryQid(country){
     const k=`qid:${normalizeName(country)}`;if(state.cache.wikidata[k])return state.cache.wikidata[k];
@@ -160,131 +175,117 @@ const Providers={
     const q=item?.id||'';state.cache.wikidata[k]=q;persistSoon();return q;
   },
   async attractions(destination){
-    // V1.1.3: eigener Cache-Key, damit alte, stadtlastige Treffer aus V1.1.2 nicht weiterverwendet werden.
-    const cacheKey=`attr:v3:${normalizeName(destination)}`,cached=state.cache.wikidata[cacheKey];if(Array.isArray(cached)&&cached.length)return cached;
-    const cityKey=`cities:${normalizeName(destination)}`;
-    let cities=state.cache.cities[cityKey]||[];
-    if(!cities.length){try{cities=await this.cities(destination)}catch(e){cities=[]}}
+    const cacheKey=`attr:v5:${normalizeName(destination)}`,cached=state.cache.wikidata[cacheKey];if(Array.isArray(cached)&&cached.length)return cached;
+    const geo=await this.geocode(destination,3),countryGeo=geo[0],cityKey=`cities:v5:${normalizeName(destination)}`;
+    let cities=state.cache.cities[cityKey]||[];if(!cities.length){try{cities=await this.cities(destination)}catch(e){cities=[]}}
     const cityNames=new Set(cities.map(x=>normalizeName(x.name)));
     const searches=[
-      {q:`${destination} Wahrzeichen`,weight:34,label:'Wahrzeichen'},
-      {q:`${destination} UNESCO Welterbe`,weight:38,label:'UNESCO / Welterbe'},
-      {q:`${destination} Nationalpark`,weight:34,label:'Nationalpark'},
-      {q:`${destination} Naturwunder`,weight:32,label:'Naturhighlight'},
-      {q:`${destination} Sehenswürdigkeit`,weight:24,label:'Sehenswürdigkeit'},
-      {q:`${destination} Denkmal`,weight:22,label:'Denkmal'},
+      {q:`${destination} Wahrzeichen`,weight:34,label:'Wahrzeichen'},{q:`${destination} UNESCO Welterbe`,weight:38,label:'UNESCO / Welterbe'},
+      {q:`${destination} Nationalpark`,weight:34,label:'Nationalpark'},{q:`${destination} Naturwunder`,weight:32,label:'Naturhighlight'},
+      {q:`${destination} Sehenswürdigkeit`,weight:24,label:'Sehenswürdigkeit'},{q:`${destination} Denkmal`,weight:22,label:'Denkmal'},
       {q:`${destination} historische Stätte`,weight:22,label:'Historische Stätte'}
     ];
-    const seen=new Set(), out=[];let lastError=null;
+    const seen=new Set(),out=[];let lastError=null;
     const settlementRx=/(?:^|:|\s)(?:Stadt in|Ort in|Gemeinde in|Großstadt|Millionenstadt|Kleinstadt|Hauptstadt|Vorort|Stadtteil|Stadtbezirk|Siedlung|City in|Cities in|Town in|Towns in|Village in|Villages in|Suburb)/i;
     const adminRx=/(?:Bundesstaat|Provinz|Territorium|Verwaltungseinheit|Region von|Region in|County|District|State of)/i;
     const usefulRx=/(?:Welterbe|World Heritage|Nationalpark|National Park|Wahrzeichen|Landmark|Naturdenkmal|Naturwunder|Denkmal|Monument|Museum|Bauwerk|Gebäude|Kirche|Kathedrale|Tempel|Schloss|Burg|Brücke|Straße|Küste|Riff|Insel|Berg|Fels|Schlucht|Wasserfall|Höhle|Park|Garten|Historic|Tourist|Sehenswürdigkeit)/i;
     for(const spec of searches){
       try{
-        const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(spec.q)}&gsrnamespace=0&gsrlimit=18&prop=coordinates|pageimages|info|categories|extracts&piprop=thumbnail&pithumbsize=480&inprop=url&cllimit=max&exintro=1&explaintext=1&exchars=420&format=json&formatversion=2&origin=*`;
-        const j=await apiJson(u);
-        let rank=0;
-        for(const page of j.query?.pages||[]){
-          rank++;
-          const name=page.title||'',norm=normalizeName(name);if(!name||seen.has(norm)||norm===normalizeName(destination))continue;
-          const c=page.coordinates?.[0];if(!c||!Number.isFinite(+c.lat)||!Number.isFinite(+c.lon))continue;
-          if(cityNames.has(norm))continue;
-          if(/^(Liste|Tourismus in|Geographie von|Geschichte von|Verwaltungsgliederung|Demografie|Politik von)\b/i.test(name))continue;
-          const cats=(page.categories||[]).map(x=>x.title||'').join(' · '), extract=page.extract||'';
-          // Konkrete Städte, Gemeinden und reine Verwaltungseinheiten dürfen nie als nationales Highlight erscheinen.
-          if(settlementRx.test(cats)||adminRx.test(cats))continue;
-          // Zusätzlicher Sicherheitsfilter für typische Stadtartikel, falls Kategorien unvollständig sind.
-          if(/\b(?:ist die Hauptstadt|ist eine Stadt|ist eine Gemeinde|city and capital|city in)\b/i.test(extract))continue;
-          let score=spec.weight+(20-rank);
-          if(/Welterbe|World Heritage/i.test(cats+extract))score+=30;
-          if(/Nationalpark|National Park/i.test(cats+name))score+=25;
-          if(/Wahrzeichen|Landmark|Naturwunder|Naturdenkmal/i.test(cats+extract))score+=20;
-          if(usefulRx.test(cats+extract+name))score+=10;
-          if(page.thumbnail?.source)score+=4;
-          seen.add(norm);
-          out.push({name,lat:+c.lat,lng:+c.lon,wiki:page.fullurl||'',photo:page.thumbnail?.source||'',score,highlightType:spec.label,summary:extract.slice(0,260)});
-        }
-      }catch(e){lastError=e;}
+        const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(spec.q)}&gsrnamespace=0&gsrlimit=18&prop=coordinates|pageimages|info|categories|extracts&piprop=thumbnail&pithumbsize=600&inprop=url&cllimit=max&exintro=1&explaintext=1&exchars=420&format=json&formatversion=2&origin=*`;
+        const j=await apiJson(u);let rank=0;
+        for(const page of j.query?.pages||[]){rank++;const name=page.title||'',norm=normalizeName(name);if(!name||seen.has(norm)||norm===normalizeName(destination))continue;const c=page.coordinates?.[0];if(!c||!Number.isFinite(+c.lat)||!Number.isFinite(+c.lon)||!inBBox(+c.lat,+c.lon,countryGeo?.bbox,0.04))continue;if(cityNames.has(norm))continue;if(/^(Liste|Tourismus in|Geographie von|Geschichte von|Verwaltungsgliederung|Demografie|Politik von)\b/i.test(name))continue;const cats=(page.categories||[]).map(x=>x.title||'').join(' · '),extract=page.extract||'';if(settlementRx.test(cats)||adminRx.test(cats)||/\b(?:ist die Hauptstadt|ist eine Stadt|ist eine Gemeinde|city and capital|city in)\b/i.test(extract))continue;let score=spec.weight+(20-rank);if(/Welterbe|World Heritage/i.test(cats+extract))score+=30;if(/Nationalpark|National Park/i.test(cats+name))score+=25;if(/Wahrzeichen|Landmark|Naturwunder|Naturdenkmal/i.test(cats+extract))score+=20;if(usefulRx.test(cats+extract+name))score+=10;if(page.thumbnail?.source)score+=4;seen.add(norm);out.push({name,lat:+c.lat,lng:+c.lon,wiki:page.fullurl||'',photo:page.thumbnail?.source||'',photoVerified:true,score,highlightType:spec.label,summary:extract.slice(0,260),source:'Wikipedia'});}
+      }catch(e){lastError=e}
     }
-    // Dubletten zusammenführen; ein Treffer aus mehreren Suchkategorien behält den höchsten Score.
-    const uniq=new Map();
-    for(const x of out){const k=normalizeName(x.name),old=uniq.get(k);if(!old||x.score>old.score)uniq.set(k,x)}
-    const result=[...uniq.values()].sort((a,b)=>b.score-a.score).slice(0,40);
-    if(!result.length)throw new Error(`Konkrete nationale Sehenswürdigkeiten konnten nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
+    const uniq=new Map();for(const x of out){const k=normalizeName(x.name),old=uniq.get(k);if(!old||x.score>old.score)uniq.set(k,x)}
+    const result=[...uniq.values()].sort((a,b)=>b.score-a.score).slice(0,40);if(!result.length)throw new Error(`Konkrete nationale Sehenswürdigkeiten konnten nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
     state.cache.wikidata[cacheKey]=result;persistSoon();return result;
   },
-  async iNatPlace(destination){
-    const u=`https://api.inaturalist.org/v1/places/autocomplete?q=${encodeURIComponent(destination)}&per_page=10`;
-    const j=await apiJson(u);return (j.results||[])[0]||null;
-  },
+  async iNatPlace(destination){const u=`https://api.inaturalist.org/v1/places/autocomplete?q=${encodeURIComponent(destination)}&per_page=10`;const j=await apiJson(u);return (j.results||[])[0]||null;},
   async wildlife(destination,month){
-    const key=`wild:${normalizeName(destination)}:${month||0}`,cached=state.cache.wildlife[key];if(Array.isArray(cached)&&cached.length)return cached;
-    let j=null,lastError=null;
-    try{
-      const geo=await this.geocode(destination,3),g=geo[0];
-      if(g?.bbox?.length===4){
-        const [south,north,west,east]=g.bbox;
-        let u=`https://api.inaturalist.org/v1/observations/species_counts?taxon_id=40151&quality_grade=research,needs_id&per_page=50&locale=de&swlat=${south}&swlng=${west}&nelat=${north}&nelng=${east}`;
-        if(month)u+=`&month=${month}`;j=await apiJson(u);
-      }
-    }catch(e){lastError=e;}
-    if(!j){
+    const key=`wild:v2:${normalizeName(destination)}:${month||0}`,cached=state.cache.wildlife[key];if(Array.isArray(cached)&&cached.length)return cached;let j=null,lastError=null;
+    try{const geo=await this.geocode(destination,3),g=geo[0];if(g?.bbox?.length===4){const[south,north,west,east]=g.bbox;let u=`https://api.inaturalist.org/v1/observations/species_counts?taxon_id=40151&quality_grade=research,needs_id&per_page=50&locale=de&swlat=${south}&swlng=${west}&nelat=${north}&nelng=${east}`;if(month)u+=`&month=${month}`;j=await apiJson(u)}}catch(e){lastError=e}
+    if(!j){try{const place=await this.iNatPlace(destination);if(!place)throw new Error('Gebiet wurde bei iNaturalist nicht gefunden.');let u=`https://api.inaturalist.org/v1/observations/species_counts?place_id=${place.id}&taxon_id=40151&quality_grade=research,needs_id&per_page=50&locale=de`;if(month)u+=`&month=${month}`;j=await apiJson(u)}catch(e){lastError=e}}
+    if(!j)throw new Error(`Wildlife konnte nicht geladen werden${lastError?`: ${lastError.message}`:''}`);const out=(j.results||[]).map(x=>({taxonId:x.taxon?.id,name:x.taxon?.preferred_common_name||x.taxon?.english_common_name||x.taxon?.name||'Unbekannt',scientific:x.taxon?.name||'',count:x.count||0,photo:x.taxon?.default_photo?.medium_url||x.taxon?.default_photo?.square_url||'',photoVerified:true,iconic:x.taxon?.iconic_taxon_name||'',source:'iNaturalist'}));if(!out.length)throw new Error('Für dieses Ziel und den gewählten Reisemonat wurden keine passenden Säugetier-Beobachtungen gefunden.');state.cache.wildlife[key]=out;persistSoon();return out;
+  },
+  async wildlifeObservations(taxonId,lat,lng,radius=80,month=0){let u=`https://api.inaturalist.org/v1/observations?taxon_id=${taxonId}&lat=${lat}&lng=${lng}&radius=${radius}&quality_grade=research,needs_id&geo=true&per_page=100&order=desc&order_by=observed_on`;if(month)u+=`&month=${month}`;const j=await apiJson(u);return j.results||[];},
+  async wildlifeTaxonPhotos(item,destination,month=0){
+    const key=`inatphoto:v2:${item.taxonId}:${normalizeName(destination)}:${month}`,cached=state.cache.photos[key];if(Array.isArray(cached)&&cached.length)return cached;
+    const urls=[];const add=u=>{if(!u||urls.some(x=>x.url===u))return;urls.push({url:u,full:u,title:item.name,page:`https://www.inaturalist.org/taxa/${item.taxonId}`,verified:true})};add(item.photo);
+    try{const geo=await this.geocode(destination,3),g=geo[0];if(g?.bbox?.length===4){const[south,north,west,east]=g.bbox;let u=`https://api.inaturalist.org/v1/observations?taxon_id=${item.taxonId}&quality_grade=research,needs_id&has[]=photos&per_page=30&order_by=votes&order=desc&swlat=${south}&swlng=${west}&nelat=${north}&nelng=${east}`;if(month)u+=`&month=${month}`;const j=await apiJson(u);for(const o of j.results||[])for(const p of o.photos||[]){const src=(p.url||'').replace('/square.','/medium.');add(src);if(urls.length>=4)break} }
+    }catch(e){}
+    const out=urls.slice(0,4);state.cache.photos[key]=out;persistSoon();return out;
+  },
+  async wikiEntity(qid){
+    const k=`wd:v2:${qid}`,cached=state.cache.wikidata[k];if(cached)return cached;
+    const u=`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(qid)}&props=sitelinks|labels|descriptions&languages=de|en&format=json&origin=*`;const j=await apiJson(u),e=j.entities?.[qid];if(!e)return null;const sl=e.sitelinks||{},ref=sl.dewiki?{lang:'de',title:sl.dewiki.title}:sl.enwiki?{lang:'en',title:sl.enwiki.title}:null,out={ref,label:e.labels?.de?.value||e.labels?.en?.value||'',description:e.descriptions?.de?.value||e.descriptions?.en?.value||''};state.cache.wikidata[k]=out;persistSoon();return out;
+  },
+  async wikiPageExact(ref){
+    if(!ref?.lang||!ref?.title)return null;const key=`wikipage:v2:${ref.lang}:${normalizeName(ref.title)}`,cached=state.cache.wikidata[key];if(cached)return cached;
+    const api=`https://${ref.lang}.wikipedia.org/w/api.php`,u=`${api}?action=query&redirects=1&titles=${encodeURIComponent(ref.title)}&prop=coordinates|pageimages|info|extracts|images&piprop=thumbnail&pithumbsize=900&inprop=url&exintro=1&explaintext=1&exchars=650&imlimit=40&format=json&formatversion=2&origin=*`;
+    const j=await apiJson(u),p=(j.query?.pages||[])[0];if(!p||p.missing)return null;const c=p.coordinates?.[0],out={title:p.title||ref.title,summary:(p.extract||'').trim(),photo:p.thumbnail?.source||'',wiki:p.fullurl||`https://${ref.lang}.wikipedia.org/wiki/${encodeURIComponent(p.title||ref.title)}`,lat:c?+c.lat:null,lng:c?+c.lon:null,ref:{lang:ref.lang,title:p.title||ref.title},imageTitles:(p.images||[]).map(x=>x.title).filter(Boolean),verified:true,source:'Wikipedia'};state.cache.wikidata[key]=out;persistSoon();return out;
+  },
+  async nearbyWikiPage(item,kind='poi'){
+    if(!Number.isFinite(+item.lat)||!Number.isFinite(+item.lng)||!item.name)return null;const radius=kind==='city'?10000:1500;
+    for(const lang of ['de','en']){
+      try{const u=`https://${lang}.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord=${+item.lat}%7C${+item.lng}&ggsradius=${radius}&ggslimit=30&prop=coordinates|pageimages|info|extracts&piprop=thumbnail&pithumbsize=900&inprop=url&exintro=1&explaintext=1&exchars=650&format=json&formatversion=2&origin=*`,j=await apiJson(u);let best=null,bestScore=0;for(const p of j.query?.pages||[]){const c=p.coordinates?.[0];if(!c)continue;const dist=haversine({lat:+item.lat,lng:+item.lng},{lat:+c.lat,lng:+c.lon});if(dist>radius/1000*1.05)continue;const score=nameMatchScore(item.name,p.title||'');if(score>bestScore){bestScore=score;best=p}}if(best&&bestScore>=.78){return await this.wikiPageExact({lang,title:best.title})}}
+      catch(e){}
+    }return null;
+  },
+  async verifiedPlaceDetails(item,context='',kind='poi'){
+    const name=item?.name||item?.title||'';if(!name)return null;const key=`verifiedplace:v3:${kind}:${normalizeName(name)}:${Number.isFinite(+item.lat)?(+item.lat).toFixed(3):''}:${Number.isFinite(+item.lng)?(+item.lng).toFixed(3):''}`,cached=state.cache.wikidata[key];if(cached)return cached;
+    let detail=null,ref=parseWikiRef(item.wiki||item.wikiTag||item.tags?.wikipedia||'');
+    if(ref)try{detail=await this.wikiPageExact(ref)}catch(e){}
+    if(!detail){const qid=item.wikidata||item.tags?.wikidata||'';if(qid)try{const entity=await this.wikiEntity(qid);if(entity?.ref)detail=await this.wikiPageExact(entity.ref)}catch(e){}}
+    if(!detail)detail=await this.nearbyWikiPage(item,kind);
+    if(detail&&Number.isFinite(+item.lat)&&Number.isFinite(+item.lng)&&Number.isFinite(+detail.lat)&&Number.isFinite(+detail.lng)){
+      const maxKm=kind==='city'?35:3;if(haversine({lat:+item.lat,lng:+item.lng},{lat:+detail.lat,lng:+detail.lng})>maxKm)detail=null;
+    }
+    if(!detail){const osmSummary=item.summary||item.tags?.['description:de']||item.tags?.description||'';detail={title:name,summary:osmSummary,photo:'',wiki:'',lat:+item.lat,lng:+item.lng,ref:null,imageTitles:[],verified:false,source:'OpenStreetMap'};return detail;}
+    state.cache.wikidata[key]=detail;persistSoon();return detail;
+  },
+  async wikiImageUrls(detail){
+    if(!detail?.ref)return[];const titles=(detail.imageTitles||[]).filter(isUsefulPhotoTitle).slice(0,24),out=[];const add=(url,title,page)=>{if(!url||out.some(x=>x.url===url))return;out.push({url,full:url,title:cleanWikiFileTitle(title),page,verified:true})};if(detail.photo)add(detail.photo,detail.title,detail.wiki);
+    if(titles.length){try{const api=`https://${detail.ref.lang}.wikipedia.org/w/api.php`,u=`${api}?action=query&titles=${encodeURIComponent(titles.join('|'))}&prop=imageinfo&iiprop=url|mime&iiurlwidth=1000&format=json&formatversion=2&origin=*`,j=await apiJson(u);for(const p of j.query?.pages||[]){const i=p.imageinfo?.[0];if(!i||!/image\/(?:jpeg|png|webp)/i.test(i.mime||'')||!isUsefulPhotoTitle(p.title))continue;add(i.thumburl||i.url,p.title,i.descriptionurl||'');if(out.length>=4)break}}catch(e){}}
+    return out.slice(0,4);
+  },
+  async verifiedCommonsPhotos(name,context=''){
+    const k=`verifiedphoto:v3:${normalizeName(name)}:${normalizeName(context)}`,cached=state.cache.photos[k];if(Array.isArray(cached))return cached;
+    const queries=[`intitle:"${String(name).replace(/"/g,'')}"`,`"${String(name).replace(/"/g,'')}" ${context||''}`.trim()],found=new Map();let anySuccess=false;
+    for(const search of queries){
+      if(found.size>=4)break;
       try{
-        const place=await this.iNatPlace(destination);if(!place)throw new Error('Gebiet wurde bei iNaturalist nicht gefunden.');
-        let u=`https://api.inaturalist.org/v1/observations/species_counts?place_id=${place.id}&taxon_id=40151&quality_grade=research,needs_id&per_page=50&locale=de`;
-        if(month)u+=`&month=${month}`;j=await apiJson(u);
-      }catch(e){lastError=e;}
+        const u=`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(search)}&gsrnamespace=6&gsrlimit=40&prop=imageinfo&iiprop=url|mime|extmetadata&iiurlwidth=1000&format=json&formatversion=2&origin=*`,j=await apiJson(u);anySuccess=true;
+        for(const p of j.query?.pages||[]){
+          const i=p.imageinfo?.[0];if(!i||!/image\/(?:jpeg|png|webp)/i.test(i.mime||'')||!isUsefulPhotoTitle(p.title))continue;
+          const md=i.extmetadata||{},blob=[p.title,md.ObjectName?.value,md.ImageDescription?.value,md.Categories?.value,md.DepictedPeople?.value,md.Location?.value].join(' ').replace(/<[^>]+>/g,' '),score=nameMatchScore(name,blob),contextScore=context?nameMatchScore(context,blob):0;
+          if(score<.72)continue;
+          const url=i.thumburl||i.url;if(!url)continue;
+          const candidate={url,full:i.url,title:cleanWikiFileTitle(p.title),page:i.descriptionurl||`https://commons.wikimedia.org/?curid=${p.pageid}`,verified:true,score:score+Math.min(.15,contextScore*.15)};
+          const old=found.get(url);if(!old||candidate.score>old.score)found.set(url,candidate);
+        }
+      }catch(e){}
     }
-    if(!j)throw new Error(`Wildlife konnte nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
-    const out=(j.results||[]).map(x=>({taxonId:x.taxon?.id,name:x.taxon?.preferred_common_name||x.taxon?.english_common_name||x.taxon?.name||'Unbekannt',scientific:x.taxon?.name||'',count:x.count||0,photo:x.taxon?.default_photo?.medium_url||x.taxon?.default_photo?.square_url||'',iconic:x.taxon?.iconic_taxon_name||''}));
-    if(!out.length)throw new Error('Für dieses Ziel und den gewählten Reisemonat wurden keine passenden Säugetier-Beobachtungen gefunden.');
-    state.cache.wildlife[key]=out;persistSoon();return out;
+    const out=[...found.values()].sort((a,b)=>b.score-a.score).slice(0,4);if(anySuccess){state.cache.photos[k]=out;persistSoon()}return out;
   },
-  async wildlifeObservations(taxonId,lat,lng,radius=80,month=0){
-    let u=`https://api.inaturalist.org/v1/observations?taxon_id=${taxonId}&lat=${lat}&lng=${lng}&radius=${radius}&quality_grade=research,needs_id&geo=true&per_page=100&order=desc&order_by=observed_on`;
-    if(month)u+=`&month=${month}`; const j=await apiJson(u);return j.results||[];
+  async verifiedPhotosForItem(item,context='',kind='poi',detail=null){
+    if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return this.wildlifeTaxonPhotos(item,activeTrip()?.destination||context,month)}
+    const d=detail||await this.verifiedPlaceDetails(item,context,kind),out=[];const add=x=>{if(!x?.url||out.some(y=>y.url===x.url))return;out.push(x)};
+    if((item.photoVerified||item.source==='Wikipedia')&&item.photo)add({url:item.photo,full:item.photo,title:item.name,page:item.wiki||'',verified:true});
+    for(const x of await this.wikiImageUrls(d))add(x);
+    if(out.length<3)for(const x of await this.verifiedCommonsPhotos(item.name||item.title,context))add(x);
+    return out.slice(0,4);
   },
-  async commonsPhotos(query){
-    const k=`photo:${normalizeName(query)}`;if(state.cache.photos[k])return state.cache.photos[k];
-    const u=`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=6&gsrlimit=8&prop=imageinfo&iiprop=url|mime&iiurlwidth=800&format=json&formatversion=2&origin=*`;
-    const j=await apiJson(u);const out=(j.query?.pages||[]).flatMap(p=>{const i=p.imageinfo?.[0];if(!i||i.mime==='image/svg+xml')return[];return[{url:i.thumburl||i.url,full:i.url,title:(p.title||'').replace(/^File:/,''),page:i.descriptionurl||`https://commons.wikimedia.org/?curid=${p.pageid}`}]}).slice(0,4);
-    state.cache.photos[k]=out;persistSoon();return out;
-  },
-  async placeDetails(query,context=''){
-    const key=`place:${normalizeName(query)}:${normalizeName(context)}`;
-    if(state.cache.wikidata[key])return state.cache.wikidata[key];
-    const full=[query,context].filter(Boolean).join(' ').trim();
-    const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(full)}&gsrnamespace=0&gsrlimit=6&prop=coordinates|pageimages|info|extracts&piprop=thumbnail&pithumbsize=640&inprop=url&exintro=1&explaintext=1&exchars=520&format=json&formatversion=2&origin=*`;
-    const j=await apiJson(u);
-    const pages=(j.query?.pages||[]).filter(p=>!/^Liste/i.test(p.title||''));
-    const best=pages.find(p=>normalizeName(p.title)===normalizeName(query))||pages[0]||null;
-    const out=best?{title:best.title||query,summary:(best.extract||'').trim(),photo:best.thumbnail?.source||'',wiki:best.fullurl||'',lat:+(best.coordinates?.[0]?.lat),lng:+(best.coordinates?.[0]?.lon)}:null;
-    state.cache.wikidata[key]=out;persistSoon();return out;
-  },
-  async openingHours(lat,lng){
-    const q=`[out:json][timeout:12];nwr(around:80,${lat},${lng})[opening_hours];out tags center 8;`;
-    const u=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`; const j=await apiJson(u); const el=(j.elements||[])[0]; return el?.tags?.opening_hours||'';
-  },
+  async openingHours(lat,lng){const q=`[out:json][timeout:10];nwr(around:80,${lat},${lng})[opening_hours];out tags center 8;`;const j=await this.overpassJson(q),el=(j.elements||[])[0];return el?.tags?.opening_hours||'';},
   async route(a,b,mode='car'){
-    if(!a||!b)return null;
-    if(mode==='flight')return {distanceKm:haversine(a,b),durationMin:0,geometry:[[a.lat,a.lng],[b.lat,b.lng]],approx:true};
-    if(['walk','transit','train','bus','ferry'].includes(mode)){
-      const km=haversine(a,b)*(mode==='walk'?1.25:1.1);const speed=mode==='walk'?4.5:mode==='transit'?25:mode==='train'?80:mode==='bus'?60:30;return {distanceKm:km,durationMin:km/speed*60,geometry:[[a.lat,a.lng],[b.lat,b.lng]],approx:true};
-    }
-    const u=`https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;
-    try{const j=await apiJson(u);const r=j.routes?.[0];if(!r)throw new Error('keine Route');return {distanceKm:r.distance/1000,durationMin:r.duration/60,geometry:r.geometry.coordinates.map(c=>[c[1],c[0]]),approx:false};}
-    catch(e){const km=haversine(a,b)*1.25;return {distanceKm:km,durationMin:km/75*60,geometry:[[a.lat,a.lng],[b.lat,b.lng]],approx:true};}
+    if(!a||!b)return null;if(mode==='flight')return {distanceKm:haversine(a,b),durationMin:0,geometry:[[a.lat,a.lng],[b.lat,b.lng]],approx:true};if(['walk','transit','train','bus','ferry'].includes(mode)){const km=haversine(a,b)*(mode==='walk'?1.25:1.1),speed=mode==='walk'?4.5:mode==='transit'?25:mode==='train'?80:mode==='bus'?60:30;return {distanceKm:km,durationMin:km/speed*60,geometry:[[a.lat,a.lng],[b.lat,b.lng]],approx:true}}
+    const u=`https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;try{const j=await apiJson(u),r=j.routes?.[0];if(!r)throw new Error('keine Route');return {distanceKm:r.distance/1000,durationMin:r.duration/60,geometry:r.geometry.coordinates.map(c=>[c[1],c[0]]),approx:false}}catch(e){const km=haversine(a,b)*1.25;return {distanceKm:km,durationMin:km/75*60,geometry:[[a.lat,a.lng],[b.lat,b.lng]],approx:true}}
   },
   async cityPois(lat,lng,radius=4500){
-    const q=`[out:json][timeout:20];(nwr(around:${radius},${lat},${lng})[tourism~"attraction|museum|viewpoint"];nwr(around:${radius},${lat},${lng})[historic];nwr(around:${radius},${lat},${lng})[leisure="park"][name];);out tags center 80;`;
-    const u=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;const j=await apiJson(u);const arr=[];
-    for(const e of j.elements||[]){const t=e.tags||{};if(!t.name)continue;const la=e.lat??e.center?.lat,lo=e.lon??e.center?.lon;if(la==null||lo==null)continue;let score=0;if(t.wikipedia)score+=40;if(t.wikidata)score+=30;if(t.tourism==='attraction')score+=18;if(t.tourism==='museum')score+=14;if(t.historic)score+=10;if(t.website)score+=4;arr.push({name:t.name,lat:la,lng:lo,type:t.tourism==='museum'?'sight':t.leisure==='park'?'nature':t.tourism==='viewpoint'?'viewpoint':'sight',openingHours:t.opening_hours||'',score,tags:t});}
+    const q=`[out:json][timeout:13];(nwr(around:${radius},${lat},${lng})[tourism~"attraction|museum|viewpoint"][name];nwr(around:${radius},${lat},${lng})[historic][name];nwr(around:${radius},${lat},${lng})[leisure="park"][name];);out tags center 90;`,j=await this.overpassJson(q),arr=[];
+    for(const e of j.elements||[]){const t=e.tags||{},la=e.lat??e.center?.lat,lo=e.lon??e.center?.lon;if(!t.name||la==null||lo==null||haversine({lat:+lat,lng:+lng},{lat:+la,lng:+lo})>radius/1000*1.08)continue;let score=0;if(t.wikipedia)score+=50;if(t.wikidata)score+=35;if(t.tourism==='attraction')score+=18;if(t.tourism==='museum')score+=16;if(t.historic)score+=10;if(t.website)score+=4;const distanceKm=haversine({lat:+lat,lng:+lng},{lat:+la,lng:+lo});arr.push({name:t['name:de']||t.name,lat:+la,lng:+lo,distanceKm,type:t.tourism==='museum'?'sight':t.leisure==='park'?'nature':t.tourism==='viewpoint'?'viewpoint':'sight',openingHours:t.opening_hours||'',score,wikiTag:t.wikipedia||'',wikidata:t.wikidata||'',website:t.website||'',summary:t['description:de']||t.description||'',photo:'',photoVerified:false,tags:t});}
     const uniq=new Map();arr.sort((a,b)=>b.score-a.score).forEach(x=>{if(!uniq.has(normalizeName(x.name)))uniq.set(normalizeName(x.name),x)});return [...uniq.values()].slice(0,40);
   },
-  async flightRoute(number){
-    const clean=String(number||'').replace(/\s+/g,'').toUpperCase();if(!clean)throw new Error('Flugnummer fehlt.');
-    const u=`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(clean)}`;const j=await apiJson(u);return j.response?.flightroute||j.response||null;
-  }
+  async flightRoute(number){const clean=String(number||'').replace(/\s+/g,'').toUpperCase();if(!clean)throw new Error('Flugnummer fehlt.');const u=`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(clean)}`;const j=await apiJson(u);return j.response?.flightroute||j.response||null;}
 };
 
 // ------------------------- Rendering -------------------------
@@ -323,7 +324,14 @@ function suggestionFooter(kind,total,shown){
   return `<div class="suggestionfooter"><span>${Math.min(shown,total)} von ${total}</span><div>${shown>5?`<button data-suggestions-less="${kind}">Weniger</button>`:''}${more?`<button class="primary mini" data-suggestions-more="${kind}">Weitere laden</button>`:''}</div></div>`;
 }
 function renderCitySuggestions(cities){
-  const p=$('#citySuggestions'),limit=discoverVisible.cities;if(cities?.length){const shown=cities.slice(0,limit);p.className=`suggestions ${limit>5?'scrollsuggestions expanded':''}`;p.innerHTML=shown.map((x,i)=>`<div class="suggestion citysuggestion"><div class="thumb">🏙</div><div><h4>${esc(x.name)}</h4><p>${x.population?`${Number(x.population).toLocaleString('de-DE')} Einwohner · `:''}Stadt-Vorschlag ${i+1}</p></div><div class="suggestionactions"><button data-city-detail='${esc(JSON.stringify(x))}'>Entdecken</button><button data-add-city='${esc(JSON.stringify(x))}'>+</button></div></div>`).join('')+suggestionFooter('cities',cities.length,shown.length);}else{p.className='suggestions empty';p.textContent='Noch nicht geladen.'}
+  const p=$('#citySuggestions'),limit=discoverVisible.cities;if(cities?.length){const shown=cities.slice(0,limit);p.className=`suggestions ${limit>5?'scrollsuggestions expanded':''}`;p.innerHTML=shown.map((x,i)=>`<div class="suggestion citysuggestion">${x.photo?`<img class="thumb" src="${esc(x.photo)}" alt="">`:`<div class="thumb ${x.photoChecked?'citythumbfallback':'imageloading'}">${x.photoChecked?'🏙':'Bild lädt …'}</div>`}<div><h4>${esc(x.name)}</h4><p>${x.population?`${Number(x.population).toLocaleString('de-DE')} Einwohner · `:''}${x.summary?esc(x.summary.slice(0,72))+(x.summary.length>72?'…':''):`Stadt-Vorschlag ${i+1}`}</p></div><div class="suggestionactions"><button data-city-detail='${esc(JSON.stringify(x))}'>Entdecken</button><button data-add-city='${esc(JSON.stringify(x))}'>+</button></div></div>`).join('')+suggestionFooter('cities',cities.length,shown.length);setTimeout(()=>enrichCitySuggestionThumbs(shown),0);}else{p.className='suggestions empty';p.textContent='Noch nicht geladen.'}
+}
+async function enrichCitySuggestionThumbs(cities){
+  const context=activeTrip()?.destination||'';
+  for(const city of cities||[]){
+    const k=`citythumb:${normalizeName(city.name)}:${(+city.lat||0).toFixed(3)}`;if(city.photo||city.photoChecked||verifiedEnrichmentPending.has(k))continue;verifiedEnrichmentPending.add(k);
+    try{const detail=await Providers.verifiedPlaceDetails(city,context,'city'),photos=await Providers.verifiedPhotosForItem(city,context,'city',detail);if(detail?.summary)city.summary=detail.summary;if(detail?.wiki)city.wiki=detail.wiki;if(photos[0]?.url){city.photo=photos[0].url;city.photoVerified=true}city.photoChecked=true;persistSoon();renderCitySuggestions(suggestionData('cities'));}catch(e){}finally{verifiedEnrichmentPending.delete(k)}
+  }
 }
 function renderAttractionSuggestions(attr){
   const p=$('#poiSuggestions'),limit=discoverVisible.attractions;if(attr?.length){const shown=attr.slice(0,limit);p.className=`suggestions ${limit>5?'scrollsuggestions expanded':''}`;p.innerHTML=shown.map((x,i)=>`<div class="suggestion">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:`<div class="thumb sightthumb">★</div>`}<div><h4>${esc(x.name)}</h4><p>${esc(x.highlightType||'Sehenswürdigkeit')}${x.summary?` · ${esc(x.summary.slice(0,90))}${x.summary.length>90?'…':''}`:''}</p></div><div class="suggestionactions"><button data-poi-detail='${esc(JSON.stringify({kind:'poi',...x}))}'>Entdecken</button><button data-add-suggestion='${esc(JSON.stringify({kind:'poi',...x}))}'>+</button></div></div>`).join('')+suggestionFooter('attractions',attr.length,shown.length);}else{p.className='suggestions empty';p.textContent='Noch nicht geladen.'}
@@ -333,9 +341,9 @@ function renderWildlifeSuggestions(wild){
 }
 function suggestionData(kind){
   const t=activeTrip();if(!t)return[];
-  if(kind==='cities')return state.cache.cities[`cities:${normalizeName(t.country||t.destination)}`]||[];
-  if(kind==='attractions')return state.cache.wikidata[`attr:v3:${normalizeName(t.country||t.destination)}`]||[];
-  if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return state.cache.wildlife[`wild:${normalizeName(t.destination)}:${month}`]||[];}
+  if(kind==='cities')return state.cache.cities[`cities:v5:${normalizeName(t.country||t.destination)}`]||[];
+  if(kind==='attractions')return state.cache.wikidata[`attr:v5:${normalizeName(t.country||t.destination)}`]||[];
+  if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return state.cache.wildlife[`wild:v2:${normalizeName(t.destination)}:${month}`]||[];}
   return[];
 }
 function changeSuggestionLimit(kind,more){
@@ -475,7 +483,7 @@ function editStopModal(day,stop,isNew=false){
   const v=activeVersion();showModal(`<h2>${isNew?'Stopp hinzufügen':'Stopp bearbeiten'}</h2><p class="lead">Zeit, Priorität und Planungsdetails festlegen.</p><div class="formgrid"><label>Name<input id="mStopName" value="${esc(stop.name)}"></label><label>Typ<select id="mStopType">${Object.keys(STOP_ICONS).map(k=>`<option value="${k}" ${stop.type===k?'selected':''}>${STOP_ICONS[k]} ${k}</option>`).join('')}</select></label><label>Reisetag<select id="mStopDay">${v.days.map((d,i)=>`<option value="${d.id}" ${d.id===day.id?'selected':''}>Tag ${i+1} · ${fmtShortDate(d.date)}</option>`).join('')}</select></label><label>Priorität<select id="mStopPriority"><option value="must">Muss</option><option value="high">Hoch</option><option value="normal">Normal</option><option value="optional">Optional</option></select></label><label>Mindestdauer (min)<input id="mStopMin" type="number" min="0" value="${stop.durationMin||0}"></label><label>Wunschdauer (min)<input id="mStopWish" type="number" min="0" value="${stop.durationWish||stop.durationMin||0}"></label><label>Fixe Startzeit<input id="mStopFixed" type="time" value="${esc(stop.fixedStart||'')}"></label><label>Weiterreise<select id="mStopMode">${Object.entries(MODES).filter(([k])=>k!=='flight').map(([k,n])=>`<option value="${k}" ${stop.modeToNext===k?'selected':''}>${n}</option>`).join('')}</select></label><label>Breitengrad<input id="mStopLat" type="number" step="any" value="${stop.lat??''}"></label><label>Längengrad<input id="mStopLng" type="number" step="any" value="${stop.lng??''}"></label></div><div class="formgrid one"><label>Öffnungszeiten<input id="mStopOpen" value="${esc(stop.openingHours||'')}" placeholder="z. B. Mo-Su 09:00-18:00"></label><label>Notizen<textarea id="mStopNotes">${esc(stop.notes||'')}</textarea></label></div><div class="actions"><button data-close-modal>Abbrechen</button><button id="lookupHoursBtn">Öffnungszeiten suchen</button><button id="lookupPhotosBtn">Fotos laden</button><button id="saveStopBtn" class="primary">Speichern</button></div><div id="stopLookupStatus" class="tiny" style="margin-top:8px"></div>`,()=>{
     $('#mStopPriority').value=stop.priority||'normal';
     $('#lookupHoursBtn').onclick=async()=>{const lat=+$('#mStopLat').value,lng=+$('#mStopLng').value;if(!Number.isFinite(lat)||!Number.isFinite(lng)){toast('Koordinaten fehlen.');return}$('#stopLookupStatus').textContent='Öffnungszeiten werden gesucht …';try{const h=await Providers.openingHours(lat,lng);if(h){$('#mStopOpen').value=h;$('#stopLookupStatus').textContent=`Gefunden: ${h}`}else $('#stopLookupStatus').textContent='Keine Öffnungszeiten in OpenStreetMap gefunden.'}catch(e){$('#stopLookupStatus').textContent=e.message}};
-    $('#lookupPhotosBtn').onclick=async()=>{$('#stopLookupStatus').textContent='Fotos werden gesucht …';try{stop.images=await Providers.commonsPhotos($('#mStopName').value.trim());$('#stopLookupStatus').textContent=`${stop.images.length} Foto(s) gefunden und beim Stopp gespeichert.`}catch(e){$('#stopLookupStatus').textContent=e.message}};
+    $('#lookupPhotosBtn').onclick=async()=>{$('#stopLookupStatus').textContent='Verifizierte Fotos werden gesucht …';try{stop.name=$('#mStopName').value.trim()||stop.name;const kind=stop.type==='city'?'city':'poi',detail=await Providers.verifiedPlaceDetails(stop,activeTrip()?.destination||'',kind);stop.images=await Providers.verifiedPhotosForItem(stop,activeTrip()?.destination||'',kind,detail);$('#stopLookupStatus').textContent=stop.images.length?`${stop.images.length} eindeutig zugeordnete(s) Foto(s) gefunden.`:'Kein ausreichend sicher zuordenbares Foto gefunden.'}catch(e){$('#stopLookupStatus').textContent=e.message}};
     $('#saveStopBtn').onclick=()=>{const target=v.days.find(d=>d.id===$('#mStopDay').value);Object.assign(stop,{name:$('#mStopName').value.trim()||'Unbenannter Stopp',type:$('#mStopType').value,priority:$('#mStopPriority').value,durationMin:+$('#mStopMin').value||0,durationWish:+$('#mStopWish').value||0,fixedStart:$('#mStopFixed').value,modeToNext:$('#mStopMode').value,lat:$('#mStopLat').value===''?null:+$('#mStopLat').value,lng:$('#mStopLng').value===''?null:+$('#mStopLng').value,openingHours:$('#mStopOpen').value.trim(),notes:$('#mStopNotes').value.trim(),routeToNext:null});if(isNew){target.stops.push(stop)}else if(target.id!==day.id){day.stops=day.stops.filter(s=>s.id!==stop.id);target.stops.push(stop)}persistSoon();closeModal();renderAll();};
   });
 }
@@ -527,25 +535,22 @@ function addCitySuggestion(city){
 }
 async function openSuggestionDetail(kind,item,context=''){
   const icon=kind==='wildlife'?'🐾':kind==='city'?'🏙':'★';
-  showModal(`<div class="detailtitle"><span class="detailtype">${icon} ${kind==='wildlife'?'Wildlife':kind==='city'?'Stadt':'Sehenswürdigkeit'}</span><h2>${esc(item.name||item.title||'Details')}</h2><p class="lead">Kurzinfo und Bilder werden geladen …</p></div><div id="detailBody"></div><div class="actions detailactions"><button data-close-modal>Schließen</button></div>`);
+  showModal(`<div class="detailtitle"><span class="detailtype">${icon} ${kind==='wildlife'?'Wildlife':kind==='city'?'Stadt':'Sehenswürdigkeit'}</span><h2>${esc(item.name||item.title||'Details')}</h2><p class="lead">Verifizierte Kurzinfo und Bilder werden geladen …</p></div><div id="detailBody"></div><div class="actions detailactions"><button data-close-modal>Schließen</button></div>`);
   const body=$('#detailBody'),actions=$('#modalContent .detailactions');
   try{
-    let detail=null,commons=[];
     if(kind==='wildlife'){
-      commons=await Providers.commonsPhotos(`${item.name} ${item.scientific||''} animal`.trim());
-      const photos=pickPhotos(item.photo,commons);
-      const t=activeTrip(),already=!!t?.targetSpecies?.some(y=>y.taxonId===item.taxonId);
-      body.innerHTML=`${detailGalleryHtml(photos)}<div class="detailfacts"><span>🧬 ${esc(item.scientific||'Art')}</span><span>📍 ${Number(item.count||0).toLocaleString('de-DE')} Beobachtungen</span><span>🗓 passend zum gewählten Reisemonat ausgewertet</span></div><div class="card detailcard"><h3>Was du wissen solltest</h3><p>Die Zahl basiert auf iNaturalist-Beobachtungen im gewählten Reiseziel und – soweit möglich – im Reisemonat. Sie zeigt die Datenlage, ist aber keine garantierte Sichtungswahrscheinlichkeit.</p><p>Über Hotspots kannst du Beobachtungscluster entlang deiner geplanten Route suchen.</p></div>`;
+      const photos=(await Providers.verifiedPhotosForItem(item,context,'wildlife')).map(x=>x.url),t=activeTrip(),already=!!t?.targetSpecies?.some(y=>y.taxonId===item.taxonId);
+      body.innerHTML=`${detailGalleryHtml(photos)}<div class="detailfacts"><span>🧬 ${esc(item.scientific||'Art')}</span><span>📍 ${Number(item.count||0).toLocaleString('de-DE')} Beobachtungen</span><span>✓ Bilder exakt über iNaturalist-Taxon-ID ${esc(item.taxonId||'')}</span></div><div class="card detailcard"><h3>Was du wissen solltest</h3><p>Die Art und ihre Bilder werden über dieselbe iNaturalist-Taxon-ID verknüpft. Dadurch werden keine Bilder nur anhand eines ähnlich klingenden Tiernamens zugemischt.</p><p>Die Beobachtungszahl beschreibt die vorhandenen Meldungen im Reiseziel bzw. Reisemonat und ist keine garantierte Sichtungswahrscheinlichkeit.</p></div>`;
       actions.insertAdjacentHTML('beforeend',`<button id="detailTargetBtn">${already?'✓ Zielart gespeichert':'Als Zielart markieren'}</button><button id="detailHotspotBtn" class="primary">Hotspots finden</button>`);
       $('#detailTargetBtn').onclick=()=>{t.targetSpecies=t.targetSpecies||[];if(!t.targetSpecies.some(y=>y.taxonId===item.taxonId))t.targetSpecies.push(item);persistSoon();$('#detailTargetBtn').textContent='✓ Zielart gespeichert';toast('Zielart gespeichert.');};
       $('#detailHotspotBtn').onclick=()=>{t.targetSpecies=t.targetSpecies||[];if(!t.targetSpecies.some(y=>y.taxonId===item.taxonId))t.targetSpecies.push(item);persistSoon();closeModal();wildlifeHotspotModal(item)};
       return;
     }
-    detail=await Providers.placeDetails(item.name||item.title,context||activeTrip()?.destination||'');
-    commons=await Providers.commonsPhotos(`${item.name||item.title} ${context||''}`.trim());
-    const photos=pickPhotos(item.photo||detail?.photo,commons),summary=detail?.summary||item.summary||'Noch keine Kurzbeschreibung verfügbar.';
+    const detail=await Providers.verifiedPlaceDetails(item,context,kind==='city'?'city':'poi'),photoObjs=await Providers.verifiedPhotosForItem(item,context,kind==='city'?'city':'poi',detail),photos=photoObjs.map(x=>x.url);
+    const summary=detail?.summary||item.summary||'';
     const kindLabel=kind==='city'?'Stadt':(item.highlightType||'Sehenswürdigkeit');
-    body.innerHTML=`${detailGalleryHtml(photos)}<div class="detailfacts"><span>📌 ${esc(kindLabel)}</span>${context?`<span>🌍 ${esc(context)}</span>`:''}${Number.isFinite(+item.lat)&&Number.isFinite(+item.lng)?`<span>⌖ ${(+item.lat).toFixed(3)}, ${(+item.lng).toFixed(3)}</span>`:''}</div><div class="card detailcard"><h3>Kurzinfo</h3><p>${esc(summary)}</p>${detail?.wiki?`<p class="detailsource">Quelle: Wikipedia · <a href="${esc(detail.wiki)}" target="_blank" rel="noopener">Artikel öffnen</a></p>`:''}</div>`;
+    const sourceLabel=detail?.verified?'Wikipedia/Wikidata – eindeutig zugeordnet':(summary?'OpenStreetMap-Beschreibung':'Keine eindeutig zuordenbare Textquelle gefunden');
+    body.innerHTML=`${detailGalleryHtml(photos)}<div class="detailfacts"><span>📌 ${esc(kindLabel)}</span>${context?`<span>🌍 ${esc(context)}</span>`:''}${Number.isFinite(+item.lat)&&Number.isFinite(+item.lng)?`<span>⌖ ${(+item.lat).toFixed(3)}, ${(+item.lng).toFixed(3)}</span>`:''}<span>✓ ${esc(sourceLabel)}</span></div><div class="card detailcard"><h3>Kurzinfo</h3>${summary?`<p>${esc(summary)}</p>`:`<p>Für diesen Eintrag wurde keine Wikipedia-Seite gefunden, die anhand von OpenStreetMap-Wikipedia/Wikidata-ID oder räumlicher und namentlicher Übereinstimmung sicher zugeordnet werden konnte. Um falsche Inhalte zu vermeiden, wird deshalb keine fremde Kurzbeschreibung angezeigt.</p>`}${detail?.wiki?`<p class="detailsource">Quelle: Wikipedia · <a href="${esc(detail.wiki)}" target="_blank" rel="noopener">Artikel öffnen</a></p>`:''}${photos.length?`<p class="detailsource">Bilder: nur eindeutig zugeordnete Wikipedia-/Wikimedia-Dateien.</p>`:'<p class="detailsource">Kein ausreichend sicher zuordenbares Bild gefunden.</p>'}</div>`;
     if(kind==='city'){
       actions.insertAdjacentHTML('beforeend','<button id="detailCityOpen">Sehenswürdigkeiten planen</button><button id="detailCityAdd" class="primary">Als Stadt hinzufügen</button>');
       $('#detailCityOpen').onclick=()=>{closeModal();cityInspirationModal(item)};$('#detailCityAdd').onclick=()=>{closeModal();addCitySuggestion(item)};
@@ -557,15 +562,20 @@ async function openSuggestionDetail(kind,item,context=''){
 function renderCityPoiResults(city,shown,onAddTour=null){
   const box=$('#cityDetailResults');
   const prev=new Map($$('[data-city-detail-pick]').map(el=>[+el.dataset.cityDetailPick,el.checked]));
-  box.innerHTML=shown.map((p,i)=>`<div class="searchitem citypoirow"><div class="citypoihead">${p.photo?`<img class="thumb" src="${esc(p.photo)}" alt="">`:`<div class="thumb imageloading">Bild lädt …</div>`}<div><b>${i+1}. ${esc(p.name)}</b><p>${p.summary?esc(p.summary.slice(0,125))+(p.summary.length>125?'…':''):p.openingHours?`Öffnungszeiten: ${esc(p.openingHours)}`:'Kurzinfo wird geladen …'}</p></div></div><div class="wideactions"><button data-city-poi-detail='${esc(JSON.stringify({kind:'citypoi',...p,cityName:city.name}))}'>Entdecken</button><label><input type="checkbox" data-city-detail-pick="${i}" ${(prev.has(i)?prev.get(i):i<7)?'checked':''}> Tour</label></div></div>`).join('')||'<div class="searchitem">Keine geeigneten Sehenswürdigkeiten gefunden.</div>';
+  box.innerHTML=shown.map((p,i)=>`<div class="searchitem citypoirow"><div class="citypoihead">${p.photo?`<img class="thumb" src="${esc(p.photo)}" alt="">`:`<div class="thumb ${p.photoChecked?'sightthumb':'imageloading'}">${p.photoChecked?'★':'Bild lädt …'}</div>`}<div><b>${i+1}. ${esc(p.name)}</b><p>${Number.isFinite(+p.distanceKm)?`${(+p.distanceKm).toFixed(1).replace('.',',')} km vom gewählten Stadtzentrum · `:''}${p.summary?esc(p.summary.slice(0,125))+(p.summary.length>125?'…':''):p.detailChecked?'Keine eindeutig zuordenbare Wikipedia-Kurzinfo.':p.openingHours?`Öffnungszeiten: ${esc(p.openingHours)}`:'Kurzinfo wird geprüft …'}</p></div></div><div class="wideactions"><button data-city-poi-detail='${esc(JSON.stringify({kind:'citypoi',...p,cityName:city.name}))}'>Entdecken</button><label><input type="checkbox" data-city-detail-pick="${i}" ${(prev.has(i)?prev.get(i):i<7)?'checked':''}> Tour</label></div></div>`).join('')||'<div class="searchitem">Keine geeigneten Sehenswürdigkeiten gefunden.</div>';
   if(shown.length){box.insertAdjacentHTML('beforeend','<button id="addCityDetailTour" class="primary" style="width:100%;margin-top:10px">Auswahl als Sightseeing-Tour hinzufügen</button>');if(onAddTour)$('#addCityDetailTour').onclick=onAddTour;}
 }
 async function enrichCityPois(city,shown,onProgress=null){
   for(const p of shown){
     try{
-      if(!p.photo||!p.summary){const info=await Providers.placeDetails(p.name,city.name);if(info){if(info.photo&&!p.photo)p.photo=info.photo;if(info.summary&&!p.summary)p.summary=info.summary;}}
-      if(!p.photo){const pics=await Providers.commonsPhotos(`${p.name} ${city.name}`);if(pics[0]?.url)p.photo=pics[0].url;}
+      const detail=await Providers.verifiedPlaceDetails(p,city.name,'poi');
+      if(detail?.summary)p.summary=detail.summary;
+      if(detail?.wiki)p.wiki=detail.wiki;
+      p.detailVerified=!!detail?.verified;
+      const pics=await Providers.verifiedPhotosForItem(p,city.name,'poi',detail);
+      if(pics[0]?.url){p.photo=pics[0].url;p.photoVerified=true}
     }catch(e){}
+    p.detailChecked=true;p.photoChecked=true;
     if(onProgress)onProgress();
   }
   return shown;
@@ -681,7 +691,7 @@ function renderMap(){
   if(!mapDayVisible.size)v.days.forEach((_,i)=>mapDayVisible.add(i));
   const chips=$('#mapDayChips');chips.innerHTML='';v.days.forEach((d,i)=>{const b=document.createElement('button');b.textContent=`Tag ${i+1}`;b.style.borderColor=DAY_COLORS[i%DAY_COLORS.length];b.style.color=DAY_COLORS[i%DAY_COLORS.length];if(!mapDayVisible.has(i))b.classList.add('off');b.onclick=()=>{mapDayVisible.has(i)?mapDayVisible.delete(i):mapDayVisible.add(i);renderMap()};chips.appendChild(b)});
   mapStopLayer.clearLayers();mapRouteLayer.clearLayers();const bounds=[];
-  v.days.forEach((d,di)=>{if(!mapDayVisible.has(di))return;const color=DAY_COLORS[di%DAY_COLORS.length];d.stops.forEach((s,i)=>{if(!Number.isFinite(s.lat)||!Number.isFinite(s.lng))return;bounds.push([s.lat,s.lng]);const marker=L.circleMarker([s.lat,s.lng],{radius:8,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).addTo(mapStopLayer);marker.bindTooltip(`Tag ${di+1}: ${s.name}`);marker.bindPopup(mapPopup(s,di));marker.on('popupopen',async()=>{if(!(s.images||[]).length){try{s.images=await Providers.commonsPhotos(`${s.name} ${activeTrip()?.destination||''}`);persistSoon();marker.setPopupContent(mapPopup(s,di));}catch(e){}}});if(i<d.stops.length-1){const r=s.routeToNext;if(r?.geometry?.length){L.polyline(r.geometry,{color,weight:5,opacity:.78}).addTo(mapRouteLayer);}else{const n=d.stops[i+1];if(Number.isFinite(n.lat)&&Number.isFinite(n.lng))L.polyline([[s.lat,s.lng],[n.lat,n.lng]],{color,weight:3,opacity:.45,dashArray:'5 7'}).addTo(mapRouteLayer);}}});for(const tr of (v.transfers||[]).filter(x=>x.date===d.date)){if(Number.isFinite(tr.fromLat)&&Number.isFinite(tr.fromLng)&&Number.isFinite(tr.toLat)&&Number.isFinite(tr.toLng)){bounds.push([tr.fromLat,tr.fromLng],[tr.toLat,tr.toLng]);L.polyline([[tr.fromLat,tr.fromLng],[tr.toLat,tr.toLng]],{color,weight:4,opacity:.75,dashArray:'8 7'}).bindTooltip(`Tag ${di+1}: ${transferLabel(tr)} · ${MODES[tr.mode]||tr.mode}`).addTo(mapRouteLayer);}}});
+  v.days.forEach((d,di)=>{if(!mapDayVisible.has(di))return;const color=DAY_COLORS[di%DAY_COLORS.length];d.stops.forEach((s,i)=>{if(!Number.isFinite(s.lat)||!Number.isFinite(s.lng))return;bounds.push([s.lat,s.lng]);const marker=L.circleMarker([s.lat,s.lng],{radius:8,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).addTo(mapStopLayer);marker.bindTooltip(`Tag ${di+1}: ${s.name}`);marker.bindPopup(mapPopup(s,di));marker.on('popupopen',async()=>{if(!(s.images||[]).length){try{const kind=s.type==='city'?'city':'poi',detail=await Providers.verifiedPlaceDetails(s,activeTrip()?.destination||'',kind);s.images=await Providers.verifiedPhotosForItem(s,activeTrip()?.destination||'',kind,detail);persistSoon();marker.setPopupContent(mapPopup(s,di));}catch(e){}}});if(i<d.stops.length-1){const r=s.routeToNext;if(r?.geometry?.length){L.polyline(r.geometry,{color,weight:5,opacity:.78}).addTo(mapRouteLayer);}else{const n=d.stops[i+1];if(Number.isFinite(n.lat)&&Number.isFinite(n.lng))L.polyline([[s.lat,s.lng],[n.lat,n.lng]],{color,weight:3,opacity:.45,dashArray:'5 7'}).addTo(mapRouteLayer);}}});for(const tr of (v.transfers||[]).filter(x=>x.date===d.date)){if(Number.isFinite(tr.fromLat)&&Number.isFinite(tr.fromLng)&&Number.isFinite(tr.toLat)&&Number.isFinite(tr.toLng)){bounds.push([tr.fromLat,tr.fromLng],[tr.toLat,tr.toLng]);L.polyline([[tr.fromLat,tr.fromLng],[tr.toLat,tr.toLng]],{color,weight:4,opacity:.75,dashArray:'8 7'}).bindTooltip(`Tag ${di+1}: ${transferLabel(tr)} · ${MODES[tr.mode]||tr.mode}`).addTo(mapRouteLayer);}}});
   if(bounds.length){if(!map._hasFitOnce){map.fitBounds(bounds,{padding:[30,30]});map._hasFitOnce=true}}
   setTimeout(()=>map.invalidateSize(),80);
 }

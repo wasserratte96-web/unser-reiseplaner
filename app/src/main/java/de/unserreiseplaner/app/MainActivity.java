@@ -105,7 +105,7 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.1.4");
+        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.1.5");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -273,7 +273,7 @@ public class MainActivity extends Activity {
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(60000);
                 connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.1.4 Android updater");
+                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.1.5 Android updater");
                 int status = connection.getResponseCode();
                 if (status < 200 || status >= 300) throw new IllegalStateException("HTTP " + status);
 
@@ -371,7 +371,7 @@ public class MainActivity extends Activity {
                     connection.setInstanceFollowRedirects(true);
                     connection.setRequestProperty("Accept", "application/json,text/plain,*/*");
                     connection.setRequestProperty("Accept-Language", "de-DE,de;q=0.9,en;q=0.7");
-                    String agent = "UnserReiseplanerBot/1.1.4 (https://github.com/wasserratte96-web/unser-reiseplaner)";
+                    String agent = "UnserReiseplanerBot/1.1.5 (https://github.com/wasserratte96-web/unser-reiseplaner)";
                     connection.setRequestProperty("User-Agent", agent);
                     if (target.getHost().endsWith("wikipedia.org") || target.getHost().endsWith("wikimedia.org") || target.getHost().endsWith("wikidata.org")) {
                         connection.setRequestProperty("Api-User-Agent", agent);
@@ -387,8 +387,10 @@ public class MainActivity extends Activity {
                         }
                     }
                     if (status < 200 || status >= 300) {
-                        String detail = body == null ? "" : body.replaceAll("\\s+", " ").trim();
-                        if (detail.length() > 180) detail = detail.substring(0, 180) + "…";
+                        String detail = body == null ? "" : body.replaceAll("<[^>]+>", " ").replaceAll("&[a-zA-Z#0-9]+;", " ").replaceAll("\\s+", " ").trim();
+                        String contentType = connection.getContentType();
+                        if (contentType != null && (contentType.contains("html") || contentType.contains("xml"))) detail = "";
+                        if (detail.length() > 120) detail = detail.substring(0, 120) + "…";
                         error = target.getHost() + ": HTTP " + status + (detail.isEmpty() ? "" : " – " + detail);
                     }
                 } catch (Exception e) {

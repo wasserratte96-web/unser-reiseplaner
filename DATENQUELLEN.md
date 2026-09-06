@@ -1,34 +1,28 @@
-# Datenquellen – Unser Reiseplaner V1
+# Datenquellen und Konsistenzprüfung – 1.1.5
 
-Die erste Version verwendet ausschließlich kostenlose, öffentlich erreichbare Datenquellen ohne verpflichtenden kostenpflichtigen API-Key.
+## OpenStreetMap / Overpass
+- Stadtlisten verwenden ausschließlich OSM-Objekte mit `place=city`.
+- Stadt-Sehenswürdigkeiten werden innerhalb eines festen Radius gesucht und anschließend nochmals per Distanz geprüft.
+- Bei Serverfehlern wird nicht parallel, sondern sequenziell auf weitere öffentliche Overpass-Endpunkte ausgewichen.
 
-## OpenStreetMap
-Kartenkacheln und Grunddaten.
+## Wikipedia / Wikidata
+Priorität der Zuordnung:
+1. exakter `wikipedia`-Tag aus OpenStreetMap,
+2. exakter `wikidata`-QID aus OpenStreetMap und dessen Wikipedia-Sitelink,
+3. nur falls keine ID vorhanden ist: Wikipedia-Geosuche nahe den OSM-Koordinaten plus strenge Namensübereinstimmung.
 
-## Nominatim
-Manuelle Ortssuche. Die App sendet nur nutzerinitiierte Suchanfragen und verwendet keinen Autocomplete-Mechanismus.
-
-## OSRM Demo Server
-Autostrecken, Entfernungen und Fahrzeiten. Für private geringe Nutzung geeignet; nicht als garantierter Produktionsdienst zu verstehen.
-
-## Wikidata / Wikipedia
-Bekannte Sehenswürdigkeiten und touristisch relevante Orte. Die App verwendet Wikidata-SPARQL und sortiert Kandidaten nach Verknüpfungs-/Bekanntheitsindikatoren.
-
-## iNaturalist
-Häufig beobachtete Säugetiere eines Reiseziels sowie historische Beobachtungen für Wildlife-Hotspots. Beobachtungszahlen sind **keine Sichtungsgarantie**.
-
-## Overpass API / OpenStreetMap
-Öffnungszeiten, touristische POIs und automatische Stadt-Sightseeing-Vorschläge, soweit entsprechende OSM-Tags vorhanden sind.
+Ein beliebiges erstes Wikipedia-Suchergebnis wird nicht mehr verwendet.
 
 ## Wikimedia Commons
-Bis zu drei Bilder je Stopp. Die App speichert nur Bild-URLs, Dateiseite und Metadaten des ausgewählten Ergebnisses. Ein Tipp auf ein Foto kann zur Commons-Dateiseite führen.
+- Bilder aus einer eindeutig zugeordneten Wikipedia-Seite werden bevorzugt.
+- Commons-Fallbacks müssen starke Namensübereinstimmung mit der Sehenswürdigkeit besitzen.
+- Unpassende Logos, Karten, Symbole und SVGs werden herausgefiltert.
+- Wenn die Zuordnung nicht sicher ist, wird kein Bild gezeigt.
 
-## ADSBDB
-Kostenlose Flugrouten-Erkennung per Flugnummer/Callsign, soweit ein passender Datensatz existiert. Keine verlässlichen zukünftigen Flugplanzeiten.
+## iNaturalist
+- Arten werden über numerische Taxon-IDs gespeichert.
+- Bilder im Wildlife-Detail werden mit derselben Taxon-ID abgefragt.
+- Dadurch hängt die Bildzuordnung nicht von mehrdeutigen Trivialnamen ab.
 
-## Datenschutz
-Es gibt in V1 kein Benutzerkonto und keinen eigenen Server. Reisepläne werden lokal auf dem Android-Gerät gespeichert. Suchbegriffe und Koordinaten werden nur an die jeweils benötigten öffentlichen Datenquellen geschickt.
-
-
-## V1.1.3 – nationale Highlights
-Die Highlight-Suche nutzt Wikipedia-Suchergebnisse mit Koordinaten, Kategorien, Kurzbeschreibung und Vorschaubild. Stadt-, Gemeinde- und Verwaltungsartikel werden anhand bekannter Stadtlisten, Wikipedia-Kategorien und Artikeltext-Heuristiken herausgefiltert. Suchkategorien wie Wahrzeichen, UNESCO-Welterbe, Nationalparks, Naturwunder, Denkmäler und historische Stätten werden unterschiedlich gewichtet.
+## Nominatim / OSRM / ADSBDB
+Diese Quellen liefern primär Koordinaten, Routing bzw. Flugrouten. Sie werden nicht als freie Quelle für Kurzbeschreibungen oder Fotos verwendet.
