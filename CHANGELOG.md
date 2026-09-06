@@ -1,30 +1,17 @@
 # Changelog
 
+## 1.1.4
+- Detail-Pop-ups für Städte, nationale Sehenswürdigkeiten und Wildlife mit kurzen, prägnanten Informationen und 3–4 Bildern.
+- Stadt-Sehenswürdigkeiten laden direkt in der Auswahlliste passende Vorschaubilder nach; Commons dient als Fallback, falls Wikipedia kein Bild liefert.
+- Detailansicht optisch überarbeitet: großes Titelbild, Bildleiste, Fakten-Chips und feste Aktionsleiste.
+- Langstreckenplanung ist jetzt verkehrsmittelunabhängig: Flug, Zug, Fernbus, Auto/Mietwagen, Camper, Fähre, ÖPNV oder sonstige Verbindung.
+- Eingabefelder und Puffertexte passen sich dem Verkehrsmittel an (z. B. Sicherheitskontrolle/Gepäck beim Flug, Bahnhofspuffer beim Zug, Fahrzeugübernahme beim Mietwagen).
+- Transfer als eigener Baustein mit Dropdown für ÖPNV, Zug, Bus, Mietwagen, Uber/Rideshare, Taxi, Auto oder Fußweg.
+- Transfer speichert reine Fahrzeit plus separaten Zusatzpuffer, Anbieter/Referenz und berücksichtigt beides in der Tagesplanung.
+- Tagesplanung unterstützt mehrere freie Zeitfenster an einem Tag, z. B. Sightseeing vor und nach einer Langstreckenverbindung.
+- Systemleisten-Fix erneut verschärft: WebView erhält unter Android 15/16 echte native Layout-Abstände für Statusleiste, Navigationsleiste und Display-Cutout; Insets werden beim Start, Fokuswechsel und Resume erneut angewendet.
+
 ## 1.1.3
-- Nationale Highlights filtern Städte, Gemeinden und Verwaltungseinheiten konsequent heraus.
-- Neue gewichtete Highlight-Suche für Wahrzeichen, UNESCO-Welterbe, Nationalparks, Naturwunder, Denkmäler und historische Stätten.
-- Alte stadtlastige Highlight-Caches aus 1.1.2 werden automatisch ignoriert.
-- Inspiration zeigt zunächst 5 Städte, 5 konkrete Highlights und 5 Tiere.
-- „Weitere laden“ erweitert jede Liste in 5er-Schritten; „Weniger“ klappt wieder auf 5 Einträge zurück.
-- Erweiterte Listen bleiben in einer scrollbar begrenzten Fläche.
-- Städte: bis zu 30 Vorschläge; nationale Highlights: bis zu 40; Wildlife: bis zu 50 Arten.
-- Erneuter Statusleisten-Fix mit Window-Insets auf Decor-Ebene plus OEM-Fallback.
-
-## 1.1.2
-
-- Android-Statusleisten-Überlappung erneut behoben: WebView wird nun über echte Systemleisten-Margins statt WebView-Padding positioniert.
-- Entdecken trennt jetzt **sehenswerte Städte**, **nationale Highlights** und **Wildlife**.
-- Vorschlagslisten wurden auf bis zu 12 Einträge erweitert und sind scrollbar.
-- Städte können separat geöffnet werden; dort werden bis zu 15 konkrete Stadt-Sehenswürdigkeiten gesucht und als Sightseeing-Tour auf einen Reisetag übernommen.
-- Stadtrundgänge können eine Unterkunft als Startpunkt verwenden und bis zu 12 Stopps enthalten.
-- Eigene Unterkunftsverwaltung für Hotel, Airbnb/Ferienwohnung, Hostel, Campingplatz und sonstige Unterkünfte.
-- Check-in/Check-out, Adresse, Buchungsreferenz und Koordinaten können gespeichert werden.
-- Flughafentransfers können mit Ankunftsflug und Unterkunft verknüpft werden.
-- Transfermodi: ÖPNV, Mietwagen, Uber/Rideshare, Taxi und Auto.
-- Flughafentransfer wird bei der verfügbaren Sightseeing-Zeit nach Flugankunft berücksichtigt.
-- Straßenmodi nutzen OSRM; ÖPNV bleibt in der kostenlosen Version als klar gekennzeichnete Näherung editierbar.
-
-## 1.1.1
-
-- Inspiration/Wildlife-Laden stabilisiert.
-- Erste Android-Inset-Korrektur.
+- Nationale Highlights werden stärker auf konkrete Sehenswürdigkeiten gefiltert.
+- Inspirationslisten sind kompakter und lassen sich schrittweise erweitern.
+- Zusätzliche Anpassungen an die Android-Statusleiste / Edge-to-Edge-Darstellung.

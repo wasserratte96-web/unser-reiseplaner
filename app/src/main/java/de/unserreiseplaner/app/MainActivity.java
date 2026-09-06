@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
     private static final int FILE_CHOOSER_REQUEST = 4001;
 
     private WebView webView;
+    private FrameLayout root;
     private ValueCallback<Uri[]> filePathCallback;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
     private DatabaseHelper database;
@@ -62,7 +63,7 @@ public class MainActivity extends Activity {
         // Padding direkt auf einer WebView ist je nach WebView-Version unzuverlässig.
         // Deshalb liegt die WebView in einem Root-Container. Die Insets werden nativ
         // als Root-Padding verarbeitet, inklusive OEM-Fallback für die Statusleiste.
-        FrameLayout root = new FrameLayout(this);
+        root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(248, 247, 243));
         setContentView(root);
 
@@ -76,36 +77,25 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(248, 247, 243));
         getWindow().setNavigationBarColor(Color.rgb(248, 247, 243));
 
-        // Insets werden auf dem Window-Decor gelesen und als Padding des Root-Containers gesetzt.
-        // Zusätzlich gibt es einen Statusbar-Höhen-Fallback: Einige WebView-/OEM-Kombinationen
-        // lieferten bei der ersten Messung trotz Edge-to-Edge top=0.
+        // Systemleisten/Safe-Area: Die WebView selbst wird mit echten Layout-Margins
+        // aus dem Bereich von Statusleiste, Navigationsleiste und Display-Cutout herausgehalten.
+        // Das ist robuster als CSS-safe-area oder Padding in der WebView und funktioniert
+        // auch bei Android 15/16 Edge-to-Edge sowie bei vielen OEM-WebViews.
         View decor = getWindow().getDecorView();
-        decor.setOnApplyWindowInsetsListener((view, insets) -> {
-            int left=0, top=0, right=0, bottom=0;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                android.graphics.Insets bars = insets.getInsets(
-                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                left=bars.left; top=bars.top; right=bars.right; bottom=bars.bottom;
-            } else {
-                left=insets.getSystemWindowInsetLeft(); top=insets.getSystemWindowInsetTop();
-                right=insets.getSystemWindowInsetRight(); bottom=insets.getSystemWindowInsetBottom();
-            }
-            if (top <= 0) {
-                int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
-                if (id > 0) top = getResources().getDimensionPixelSize(id);
-            }
-            root.setPadding(left, top, right, bottom);
+        View.OnApplyWindowInsetsListener insetListener = (view, insets) -> {
+            applySafeInsets(insets);
             return insets;
-        });
+        };
+        root.setOnApplyWindowInsetsListener(insetListener);
+        decor.setOnApplyWindowInsetsListener(insetListener);
         decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-        decor.post(() -> decor.requestApplyInsets());
-        // Letzter Fallback nach dem ersten Layout, falls der OEM keine Insets dispatcht.
-        root.postDelayed(() -> {
-            if (root.getPaddingTop() == 0) {
-                int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
-                if (id > 0) root.setPadding(root.getPaddingLeft(), getResources().getDimensionPixelSize(id), root.getPaddingRight(), root.getPaddingBottom());
-            }
-        }, 350);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setStatusBarContrastEnforced(false);
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
+        root.post(() -> { root.requestApplyInsets(); decor.requestApplyInsets(); applySafeInsets(root.getRootWindowInsets()); });
+        root.postDelayed(() -> applySafeInsets(root.getRootWindowInsets()), 250);
+        root.postDelayed(() -> applySafeInsets(root.getRootWindowInsets()), 900);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -115,7 +105,7 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.1.3");
+        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.1.4");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -153,9 +143,59 @@ public class MainActivity extends Activity {
         webView.loadUrl("file:///android_asset/www/index.html");
     }
 
+    private int systemDimension(String name) {
+        int id = getResources().getIdentifier(name, "dimen", "android");
+        return id > 0 ? getResources().getDimensionPixelSize(id) : 0;
+    }
+
+    private void applySafeInsets(WindowInsets insets) {
+        if (root == null || webView == null) return;
+        if (Build.VERSION.SDK_INT < 35) {
+            FrameLayout.LayoutParams oldLp = (FrameLayout.LayoutParams) webView.getLayoutParams();
+            if (oldLp.leftMargin != 0 || oldLp.topMargin != 0 || oldLp.rightMargin != 0 || oldLp.bottomMargin != 0) {
+                oldLp.setMargins(0, 0, 0, 0);
+                webView.setLayoutParams(oldLp);
+            }
+            return;
+        }
+        int left = 0, top = 0, right = 0, bottom = 0;
+        if (insets != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Insets bars = insets.getInsetsIgnoringVisibility(
+                        WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars() | WindowInsets.Type.displayCutout());
+                android.graphics.Insets gestures = insets.getInsets(WindowInsets.Type.systemGestures());
+                left = Math.max(bars.left, gestures.left);
+                top = bars.top;
+                right = Math.max(bars.right, gestures.right);
+                bottom = Math.max(bars.bottom, gestures.bottom);
+            } else {
+                left = insets.getSystemWindowInsetLeft();
+                top = insets.getSystemWindowInsetTop();
+                right = insets.getSystemWindowInsetRight();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+        }
+        // OEM-Fallbacks, falls bei der ersten Messung trotz sichtbarer Systemleiste 0 geliefert wird.
+        if (top <= 0) top = systemDimension("status_bar_height");
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) webView.getLayoutParams();
+        if (lp.leftMargin != left || lp.topMargin != top || lp.rightMargin != right || lp.bottomMargin != bottom) {
+            lp.setMargins(left, top, right, bottom);
+            webView.setLayoutParams(lp);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && root != null) {
+            root.post(() -> { root.requestApplyInsets(); applySafeInsets(root.getRootWindowInsets()); });
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        if (root != null) root.post(() -> { root.requestApplyInsets(); applySafeInsets(root.getRootWindowInsets()); });
         if (waitingForInstallPermission && getPackageManager().canRequestPackageInstalls()
                 && pendingUpdateUrl != null) {
             waitingForInstallPermission = false;
@@ -233,7 +273,7 @@ public class MainActivity extends Activity {
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(60000);
                 connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.1.3 Android updater");
+                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.1.4 Android updater");
                 int status = connection.getResponseCode();
                 if (status < 200 || status >= 300) throw new IllegalStateException("HTTP " + status);
 
@@ -331,7 +371,7 @@ public class MainActivity extends Activity {
                     connection.setInstanceFollowRedirects(true);
                     connection.setRequestProperty("Accept", "application/json,text/plain,*/*");
                     connection.setRequestProperty("Accept-Language", "de-DE,de;q=0.9,en;q=0.7");
-                    String agent = "UnserReiseplanerBot/1.1.3 (https://github.com/wasserratte96-web/unser-reiseplaner)";
+                    String agent = "UnserReiseplanerBot/1.1.4 (https://github.com/wasserratte96-web/unser-reiseplaner)";
                     connection.setRequestProperty("User-Agent", agent);
                     if (target.getHost().endsWith("wikipedia.org") || target.getHost().endsWith("wikimedia.org") || target.getHost().endsWith("wikidata.org")) {
                         connection.setRequestProperty("Api-User-Agent", agent);

@@ -1,27 +1,21 @@
-# Unser Reiseplaner
+# Unser Reiseplaner – Version 1.1.4
 
-Private, lokal installierbare Android-Reiseplanungs-App mit kostenlosen öffentlichen Datenquellen.
+## Schwerpunkt dieses Updates
 
-## Version 1.1.3
+### Entdecken
+- Jede vorgeschlagene Stadt, Sehenswürdigkeit und Tierart besitzt eine eigene **Entdecken-Ansicht**.
+- Detailansichten zeigen kurze Informationen und **3–4 Bilder**, soweit die freien Quellen passende Bilder liefern.
+- Sehenswürdigkeiten innerhalb einer Stadt erhalten bereits in der Auswahlliste ein Vorschaubild; Wikipedia und Wikimedia Commons werden kombiniert.
 
-Schwerpunkte dieser Version:
+### Tages- und Transportplanung
+- Langstrecken-Verbindungen sind nicht mehr auf Flüge beschränkt.
+- Unterstützt: Flug, Zug, Fernbus, Auto, Mietwagen, Camper, Fähre, ÖPNV und sonstige Verbindungen.
+- Je Verkehrsmittel ändern sich Bezeichnungen, Eingabefelder und Standardpuffer.
+- Ein separater **Transfer-Baustein** verbindet Ankunft/Abfahrt mit der Unterkunft und kann z. B. ÖPNV, Mietwagen, Uber/Rideshare oder Taxi verwenden.
+- Die Tagesplanung kann nun mehrere freie Zeitfenster darstellen, z. B. Sightseeing am Morgen, Langstreckenfahrt am Mittag und weitere Zeit am Abend.
 
-- getrennte Inspiration für sehenswerte Städte, nationale Highlights und Wildlife
-- längere, scrollbare Empfehlungslisten
-- Stadt-Detailansicht mit konkreten Sehenswürdigkeiten und Übernahme als Sightseeing-Tour
-- Unterkünfte (Hotel, Airbnb/Ferienwohnung, Hostel, Camping) mit Check-in/Check-out
-- Flughafentransfers zwischen Ankunftsflug und Unterkunft
-- ÖPNV, Mietwagen, Uber/Rideshare, Taxi und Auto als Transfermodi
-- Transferzeit fließt in die verfügbare Sightseeing-Zeit ein
-- robuster Android-15/16-Systemleisten-Fix mit nativen Insets
-- mehrere Reisen, Versionen, Tagesplanung, Routing, Wildlife, Karten und In-App-Updates
+### Android
+- Statusleisten-/Safe-Area-Behandlung für Android 15/16 wurde nativ verstärkt.
 
-## Kostenlos verwendete Datenquellen
-
-OpenStreetMap/Nominatim, Overpass, OSRM, Wikipedia/Wikimedia Commons, iNaturalist, ADSBDB und GitHub Releases.
-
-Hinweis: Globales ÖPNV-Routing mit echten Fahrplänen ist ohne kommerziellen bzw. regionalen Anbieter nicht überall zuverlässig verfügbar. Deshalb wird die ÖPNV-Transferdauer derzeit als editierbare Näherung berechnet.
-
-
-## Inspiration in 1.1.3
-Die Entdecken-Ansicht trennt sehenswerte Städte, konkrete nationale Highlights und Wildlife. Jede Kategorie startet mit fünf Einträgen und kann mit „Weitere laden“ schrittweise erweitert werden. Nationale Highlights werden gegen Stadt-/Gemeindeartikel gefiltert.
+## Update vom Smartphone
+Siehe `UPDATE_1_1_4_TERMUX.md`.
