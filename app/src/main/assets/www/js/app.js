@@ -13,7 +13,7 @@ const STOP_ICONS = {sight:'★',wildlife:'🐾',city:'🏙',nature:'🌿',food:'
 
 const UPDATE_REPOSITORY = 'wasserratte96-web/unser-reiseplaner';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`;
-let installedAppVersion = {versionName:'1.1.2',versionCode:4,repository:UPDATE_REPOSITORY};
+let installedAppVersion = {versionName:'1.1.3',versionCode:5,repository:UPDATE_REPOSITORY};
 let availableUpdate = null;
 
 let state = null;
@@ -24,6 +24,7 @@ let mapRouteLayer = null;
 let mapDayVisible = new Set();
 let saveTimer = null;
 let currentView = 'trips';
+const discoverVisible = {cities:5,attractions:5,wildlife:5};
 
 const NativeHttp = window.NativeHttp = {
   pending:new Map(),
@@ -141,14 +142,14 @@ const Providers={
       try{
         const terms=[`${destination} Hauptstadt`,`${destination} Großstadt`,`${destination} Stadt`],seen=new Set(out.map(x=>normalizeName(x.name)));
         for(const term of terms){
-          const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrnamespace=0&gsrlimit=18&prop=coordinates|info&inprop=url&format=json&formatversion=2&origin=*`;
+          const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrnamespace=0&gsrlimit=30&prop=coordinates|info&inprop=url&format=json&formatversion=2&origin=*`;
           const j=await apiJson(u);
           for(const p of j.query?.pages||[]){const c=p.coordinates?.[0],name=p.title||'';if(!c||!name||seen.has(normalizeName(name))||/Liste|Geschichte|Geographie|Tourismus/i.test(name))continue;seen.add(normalizeName(name));out.push({name,lat:+c.lat,lng:+c.lon,population:0,country:destination,wiki:p.fullurl||''});}
-          if(out.length>=18)break;
+          if(out.length>=30)break;
         }
       }catch(e){lastError=e;}
     }
-    const uniq=new Map();out.forEach(x=>{if(!uniq.has(normalizeName(x.name)))uniq.set(normalizeName(x.name),x)});out=[...uniq.values()].slice(0,15);
+    const uniq=new Map();out.forEach(x=>{if(!uniq.has(normalizeName(x.name)))uniq.set(normalizeName(x.name),x)});out=[...uniq.values()].slice(0,30);
     if(!out.length)throw new Error(`Städte konnten nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
     state.cache.cities[key]=out;persistSoon();return out;
   },
@@ -159,34 +160,58 @@ const Providers={
     const q=item?.id||'';state.cache.wikidata[k]=q;persistSoon();return q;
   },
   async attractions(destination){
-    const cacheKey=`attr:${normalizeName(destination)}`,cached=state.cache.wikidata[cacheKey];if(Array.isArray(cached)&&cached.length)return cached;
-    const searches=[`${destination} Sehenswürdigkeiten`,`${destination} Wahrzeichen`,`${destination} Nationalpark`,`${destination} UNESCO`,`${destination} Natur Sehenswürdigkeit`];
+    // V1.1.3: eigener Cache-Key, damit alte, stadtlastige Treffer aus V1.1.2 nicht weiterverwendet werden.
+    const cacheKey=`attr:v3:${normalizeName(destination)}`,cached=state.cache.wikidata[cacheKey];if(Array.isArray(cached)&&cached.length)return cached;
+    const cityKey=`cities:${normalizeName(destination)}`;
+    let cities=state.cache.cities[cityKey]||[];
+    if(!cities.length){try{cities=await this.cities(destination)}catch(e){cities=[]}}
+    const cityNames=new Set(cities.map(x=>normalizeName(x.name)));
+    const searches=[
+      {q:`${destination} Wahrzeichen`,weight:34,label:'Wahrzeichen'},
+      {q:`${destination} UNESCO Welterbe`,weight:38,label:'UNESCO / Welterbe'},
+      {q:`${destination} Nationalpark`,weight:34,label:'Nationalpark'},
+      {q:`${destination} Naturwunder`,weight:32,label:'Naturhighlight'},
+      {q:`${destination} Sehenswürdigkeit`,weight:24,label:'Sehenswürdigkeit'},
+      {q:`${destination} Denkmal`,weight:22,label:'Denkmal'},
+      {q:`${destination} historische Stätte`,weight:22,label:'Historische Stätte'}
+    ];
     const seen=new Set(), out=[];let lastError=null;
-    for(const term of searches){
+    const settlementRx=/(?:^|:|\s)(?:Stadt in|Ort in|Gemeinde in|Großstadt|Millionenstadt|Kleinstadt|Hauptstadt|Vorort|Stadtteil|Stadtbezirk|Siedlung|City in|Cities in|Town in|Towns in|Village in|Villages in|Suburb)/i;
+    const adminRx=/(?:Bundesstaat|Provinz|Territorium|Verwaltungseinheit|Region von|Region in|County|District|State of)/i;
+    const usefulRx=/(?:Welterbe|World Heritage|Nationalpark|National Park|Wahrzeichen|Landmark|Naturdenkmal|Naturwunder|Denkmal|Monument|Museum|Bauwerk|Gebäude|Kirche|Kathedrale|Tempel|Schloss|Burg|Brücke|Straße|Küste|Riff|Insel|Berg|Fels|Schlucht|Wasserfall|Höhle|Park|Garten|Historic|Tourist|Sehenswürdigkeit)/i;
+    for(const spec of searches){
       try{
-        const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrnamespace=0&gsrlimit=12&prop=coordinates|pageimages|info&piprop=thumbnail&pithumbsize=420&inprop=url&format=json&formatversion=2&origin=*`;
+        const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(spec.q)}&gsrnamespace=0&gsrlimit=18&prop=coordinates|pageimages|info|categories|extracts&piprop=thumbnail&pithumbsize=480&inprop=url&cllimit=max&exintro=1&explaintext=1&exchars=420&format=json&formatversion=2&origin=*`;
         const j=await apiJson(u);
+        let rank=0;
         for(const page of j.query?.pages||[]){
-          const name=page.title||'';if(!name||seen.has(normalizeName(name)))continue;
+          rank++;
+          const name=page.title||'',norm=normalizeName(name);if(!name||seen.has(norm)||norm===normalizeName(destination))continue;
           const c=page.coordinates?.[0];if(!c||!Number.isFinite(+c.lat)||!Number.isFinite(+c.lon))continue;
-          if(/^(Liste|Tourismus in|Geographie von|Geschichte von)\b/i.test(name))continue;
-          seen.add(normalizeName(name));out.push({name,lat:+c.lat,lng:+c.lon,wiki:page.fullurl||'',photo:page.thumbnail?.source||'',score:Math.max(1,100-out.length)});
+          if(cityNames.has(norm))continue;
+          if(/^(Liste|Tourismus in|Geographie von|Geschichte von|Verwaltungsgliederung|Demografie|Politik von)\b/i.test(name))continue;
+          const cats=(page.categories||[]).map(x=>x.title||'').join(' · '), extract=page.extract||'';
+          // Konkrete Städte, Gemeinden und reine Verwaltungseinheiten dürfen nie als nationales Highlight erscheinen.
+          if(settlementRx.test(cats)||adminRx.test(cats))continue;
+          // Zusätzlicher Sicherheitsfilter für typische Stadtartikel, falls Kategorien unvollständig sind.
+          if(/\b(?:ist die Hauptstadt|ist eine Stadt|ist eine Gemeinde|city and capital|city in)\b/i.test(extract))continue;
+          let score=spec.weight+(20-rank);
+          if(/Welterbe|World Heritage/i.test(cats+extract))score+=30;
+          if(/Nationalpark|National Park/i.test(cats+name))score+=25;
+          if(/Wahrzeichen|Landmark|Naturwunder|Naturdenkmal/i.test(cats+extract))score+=20;
+          if(usefulRx.test(cats+extract+name))score+=10;
+          if(page.thumbnail?.source)score+=4;
+          seen.add(norm);
+          out.push({name,lat:+c.lat,lng:+c.lon,wiki:page.fullurl||'',photo:page.thumbnail?.source||'',score,highlightType:spec.label,summary:extract.slice(0,260)});
         }
       }catch(e){lastError=e;}
-      if(out.length>=18)break;
     }
-    if(!out.length){
-      try{
-        const geo=await this.geocode(destination,3),g=geo[0];
-        if(g){
-          const u=`https://de.wikipedia.org/w/api.php?action=query&generator=geosearch&ggsprimary=all&ggsnamespace=0&ggsradius=10000&ggslimit=25&ggscoord=${g.lat}|${g.lng}&prop=coordinates|pageimages|info&piprop=thumbnail&pithumbsize=420&inprop=url&format=json&formatversion=2&origin=*`;
-          const j=await apiJson(u);
-          for(const page of j.query?.pages||[]){const c=page.coordinates?.[0],name=page.title||'';if(!name||!c||seen.has(normalizeName(name)))continue;seen.add(normalizeName(name));out.push({name,lat:+c.lat,lng:+c.lon,wiki:page.fullurl||'',photo:page.thumbnail?.source||'',score:Math.max(1,80-out.length)});}
-        }
-      }catch(e){lastError=e;}
-    }
-    if(!out.length)throw new Error(`Sehenswürdigkeiten konnten nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
-    state.cache.wikidata[cacheKey]=out.slice(0,24);persistSoon();return state.cache.wikidata[cacheKey];
+    // Dubletten zusammenführen; ein Treffer aus mehreren Suchkategorien behält den höchsten Score.
+    const uniq=new Map();
+    for(const x of out){const k=normalizeName(x.name),old=uniq.get(k);if(!old||x.score>old.score)uniq.set(k,x)}
+    const result=[...uniq.values()].sort((a,b)=>b.score-a.score).slice(0,40);
+    if(!result.length)throw new Error(`Konkrete nationale Sehenswürdigkeiten konnten nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
+    state.cache.wikidata[cacheKey]=result;persistSoon();return result;
   },
   async iNatPlace(destination){
     const u=`https://api.inaturalist.org/v1/places/autocomplete?q=${encodeURIComponent(destination)}&per_page=10`;
@@ -199,14 +224,14 @@ const Providers={
       const geo=await this.geocode(destination,3),g=geo[0];
       if(g?.bbox?.length===4){
         const [south,north,west,east]=g.bbox;
-        let u=`https://api.inaturalist.org/v1/observations/species_counts?taxon_id=40151&quality_grade=research,needs_id&per_page=30&locale=de&swlat=${south}&swlng=${west}&nelat=${north}&nelng=${east}`;
+        let u=`https://api.inaturalist.org/v1/observations/species_counts?taxon_id=40151&quality_grade=research,needs_id&per_page=50&locale=de&swlat=${south}&swlng=${west}&nelat=${north}&nelng=${east}`;
         if(month)u+=`&month=${month}`;j=await apiJson(u);
       }
     }catch(e){lastError=e;}
     if(!j){
       try{
         const place=await this.iNatPlace(destination);if(!place)throw new Error('Gebiet wurde bei iNaturalist nicht gefunden.');
-        let u=`https://api.inaturalist.org/v1/observations/species_counts?place_id=${place.id}&taxon_id=40151&quality_grade=research,needs_id&per_page=30&locale=de`;
+        let u=`https://api.inaturalist.org/v1/observations/species_counts?place_id=${place.id}&taxon_id=40151&quality_grade=research,needs_id&per_page=50&locale=de`;
         if(month)u+=`&month=${month}`;j=await apiJson(u);
       }catch(e){lastError=e;}
     }
@@ -280,18 +305,35 @@ function renderDiscover(){
   const chips=$('#interestChips');chips.innerHTML='';INTERESTS.forEach(i=>{const b=document.createElement('button');b.className=`chip ${(t?.interests||[]).includes(i)?'on':''}`;b.textContent=i;b.onclick=()=>{if(!t)return;const a=t.interests||[];const p=a.indexOf(i);p>=0?a.splice(p,1):a.push(i);persistSoon();renderDiscover();};chips.appendChild(b)});
   renderSuggestionBoxes();
 }
+function suggestionFooter(kind,total,shown){
+  if(!total||total<=5)return'';
+  const more=shown<total;
+  return `<div class="suggestionfooter"><span>${Math.min(shown,total)} von ${total}</span><div>${shown>5?`<button data-suggestions-less="${kind}">Weniger</button>`:''}${more?`<button class="primary mini" data-suggestions-more="${kind}">Weitere laden</button>`:''}</div></div>`;
+}
 function renderCitySuggestions(cities){
-  const p=$('#citySuggestions');if(cities?.length){p.className='suggestions scrollsuggestions';p.innerHTML=cities.slice(0,12).map((x,i)=>`<div class="suggestion citysuggestion"><div class="thumb">🏙</div><div><h4>${esc(x.name)}</h4><p>${x.population?`${Number(x.population).toLocaleString('de-DE')} Einwohner · `:''}Stadt-Vorschlag ${i+1}</p></div><div class="suggestionactions"><button data-city-inspire='${esc(JSON.stringify(x))}'>Entdecken</button><button data-add-city='${esc(JSON.stringify(x))}'>+</button></div></div>`).join('');}else{p.className='suggestions scrollsuggestions empty';p.textContent='Noch nicht geladen.'}
+  const p=$('#citySuggestions'),limit=discoverVisible.cities;if(cities?.length){const shown=cities.slice(0,limit);p.className=`suggestions ${limit>5?'scrollsuggestions expanded':''}`;p.innerHTML=shown.map((x,i)=>`<div class="suggestion citysuggestion"><div class="thumb">🏙</div><div><h4>${esc(x.name)}</h4><p>${x.population?`${Number(x.population).toLocaleString('de-DE')} Einwohner · `:''}Stadt-Vorschlag ${i+1}</p></div><div class="suggestionactions"><button data-city-inspire='${esc(JSON.stringify(x))}'>Entdecken</button><button data-add-city='${esc(JSON.stringify(x))}'>+</button></div></div>`).join('')+suggestionFooter('cities',cities.length,shown.length);}else{p.className='suggestions empty';p.textContent='Noch nicht geladen.'}
 }
 function renderAttractionSuggestions(attr){
-  const p=$('#poiSuggestions');if(attr?.length){p.className='suggestions scrollsuggestions';p.innerHTML=attr.slice(0,12).map((x,i)=>`<div class="suggestion">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:`<div class="thumb" style="display:grid;place-items:center;font-size:20px">${i+1}</div>`}<div><h4>${esc(x.name)}</h4><p>Nationales Highlight · Vorschlag ${i+1}</p></div><button data-add-suggestion='${esc(JSON.stringify({kind:'poi',...x}))}'>+</button></div>`).join('');}else{p.className='suggestions scrollsuggestions empty';p.textContent='Noch nicht geladen.'}
+  const p=$('#poiSuggestions'),limit=discoverVisible.attractions;if(attr?.length){const shown=attr.slice(0,limit);p.className=`suggestions ${limit>5?'scrollsuggestions expanded':''}`;p.innerHTML=shown.map((x,i)=>`<div class="suggestion">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:`<div class="thumb sightthumb">★</div>`}<div><h4>${esc(x.name)}</h4><p>${esc(x.highlightType||'Sehenswürdigkeit')}${x.summary?` · ${esc(x.summary.slice(0,90))}${x.summary.length>90?'…':''}`:''}</p></div><button data-add-suggestion='${esc(JSON.stringify({kind:'poi',...x}))}'>+</button></div>`).join('')+suggestionFooter('attractions',attr.length,shown.length);}else{p.className='suggestions empty';p.textContent='Noch nicht geladen.'}
 }
 function renderWildlifeSuggestions(wild){
-  const w=$('#wildSuggestions');if(wild?.length){w.className='suggestions scrollsuggestions';w.innerHTML=wild.slice(0,12).map(x=>`<div class="suggestion">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:'<div class="thumb" style="display:grid;place-items:center">🐾</div>'}<div><h4>${esc(x.name)}</h4><p><i>${esc(x.scientific)}</i> · ${x.count} Beobachtungen</p></div><button data-target-species='${esc(JSON.stringify(x))}'>Ziel</button></div>`).join('');}else{w.className='suggestions scrollsuggestions empty';w.textContent='Noch nicht geladen.'}
+  const w=$('#wildSuggestions'),limit=discoverVisible.wildlife;if(wild?.length){const shown=wild.slice(0,limit);w.className=`suggestions ${limit>5?'scrollsuggestions expanded':''}`;w.innerHTML=shown.map(x=>`<div class="suggestion">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:'<div class="thumb sightthumb">🐾</div>'}<div><h4>${esc(x.name)}</h4><p><i>${esc(x.scientific)}</i> · ${x.count} Beobachtungen</p></div><button data-target-species='${esc(JSON.stringify(x))}'>Ziel</button></div>`).join('')+suggestionFooter('wildlife',wild.length,shown.length);}else{w.className='suggestions empty';w.textContent='Noch nicht geladen.'}
+}
+function suggestionData(kind){
+  const t=activeTrip();if(!t)return[];
+  if(kind==='cities')return state.cache.cities[`cities:${normalizeName(t.country||t.destination)}`]||[];
+  if(kind==='attractions')return state.cache.wikidata[`attr:v3:${normalizeName(t.country||t.destination)}`]||[];
+  if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return state.cache.wildlife[`wild:${normalizeName(t.destination)}:${month}`]||[];}
+  return[];
+}
+function changeSuggestionLimit(kind,more){
+  const data=suggestionData(kind),key=kind;if(!data.length)return;
+  discoverVisible[key]=more?Math.min(data.length,(discoverVisible[key]||5)+5):5;
+  renderSuggestionBoxes();
 }
 function renderSuggestionBoxes(){
   const t=activeTrip();if(!t)return;
-  const cities=state.cache.cities[`cities:${normalizeName(t.country||t.destination)}`];const attr=state.cache.wikidata[`attr:${normalizeName(t.country||t.destination)}`];const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;const wild=state.cache.wildlife[`wild:${normalizeName(t.destination)}:${month}`];
+  const cities=suggestionData('cities'),attr=suggestionData('attractions'),wild=suggestionData('wildlife');
   renderCitySuggestions(cities);renderAttractionSuggestions(attr);renderWildlifeSuggestions(wild);
 }
 function dayConstraints(v,day){
@@ -373,7 +415,9 @@ async function discoverAll(){
   const t=activeTrip(),v=activeVersion();if(!t||!v)return;
   const btn=$('#discoverBtn'),old=btn.textContent;btn.classList.add('loading');btn.disabled=true;btn.textContent='Lädt …';
   try{
-    const results=await Promise.all([loadCities(),loadAttractions(),loadWildlife()]);const ok=results.filter(Boolean).length;
+    // Städte zuerst laden: die Highlight-Suche nutzt die Stadtliste als Negativfilter.
+    const cityOk=await loadCities();
+    const rest=await Promise.all([loadAttractions(),loadWildlife()]);const results=[cityOk,...rest],ok=results.filter(Boolean).length;
     toast(ok===3?'Inspiration erfolgreich geladen.':ok>0?`${ok} von 3 Bereichen wurden geladen.`:'Inspiration konnte nicht geladen werden.');
   }finally{btn.classList.remove('loading');btn.disabled=false;btn.textContent=old}
 }
@@ -563,7 +607,7 @@ function switchView(name){currentView=name;$$('.view').forEach(v=>v.classList.to
 function locateStop(id){const v=activeVersion();if(!v)return null;for(const d of v.days){const s=d.stops.find(x=>x.id===id);if(s)return{day:d,stop:s}}return null}
 function bindEvents(){
   $$('.bottomnav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
-  $('#tripSelect').onchange=e=>{state.activeTripId=e.target.value;ensureActive();mapDayVisible.clear();persistSoon();renderAll()};
+  $('#tripSelect').onchange=e=>{state.activeTripId=e.target.value;ensureActive();discoverVisible.cities=discoverVisible.attractions=discoverVisible.wildlife=5;mapDayVisible.clear();persistSoon();renderAll()};
   $('#versionSelect').onchange=e=>{const t=activeTrip();if(t)t.selectedVersionId=e.target.value;mapDayVisible.clear();persistSoon();renderAll()};
   $('#newTripBtn').onclick=newTripModal; $('#refreshBtn').onclick=refreshAllRoutes; $('#discoverBtn').onclick=discoverAll;$('#reloadCitiesBtn').onclick=loadCities;$('#reloadPoiBtn').onclick=loadAttractions;$('#reloadWildBtn').onclick=loadWildlife;$('#addStopBtn').onclick=()=>addStopModal();$('#addFlightBtn').onclick=()=>flightModal();$('#addAccommodationBtn').onclick=()=>accommodationModal();$('#addTransferBtn').onclick=()=>transferModal();$('#fitMapBtn').onclick=fitMap;$('#mapFilterBtn').onclick=mapFilterModal;
   $('#compareA').onchange=renderCompareResult;$('#compareB').onchange=renderCompareResult;
@@ -593,6 +637,8 @@ function bindEvents(){
     if(d.addCity){try{addCitySuggestion(JSON.parse(d.addCity))}catch(err){}}
     if(d.addSuggestion){try{addSuggestion(JSON.parse(d.addSuggestion))}catch(err){}}
     if(d.targetSpecies){try{chooseTargetSpecies(JSON.parse(d.targetSpecies))}catch(err){}}
+    if(d.suggestionsMore)changeSuggestionLimit(d.suggestionsMore,true);
+    if(d.suggestionsLess)changeSuggestionLimit(d.suggestionsLess,false);
   });
   $('#versionSelect').addEventListener('contextmenu',e=>{e.preventDefault();const t=activeTrip();if(t)versionModal(t)});
   $('#versionSelect').addEventListener('dblclick',()=>{const t=activeTrip();if(t)versionModal(t)});

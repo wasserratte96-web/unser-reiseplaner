@@ -28,3 +28,7 @@ Kostenlose Flugrouten-Erkennung per Flugnummer/Callsign, soweit ein passender Da
 
 ## Datenschutz
 Es gibt in V1 kein Benutzerkonto und keinen eigenen Server. Reisepläne werden lokal auf dem Android-Gerät gespeichert. Suchbegriffe und Koordinaten werden nur an die jeweils benötigten öffentlichen Datenquellen geschickt.
+
+
+## V1.1.3 – nationale Highlights
+Die Highlight-Suche nutzt Wikipedia-Suchergebnisse mit Koordinaten, Kategorien, Kurzbeschreibung und Vorschaubild. Stadt-, Gemeinde- und Verwaltungsartikel werden anhand bekannter Stadtlisten, Wikipedia-Kategorien und Artikeltext-Heuristiken herausgefiltert. Suchkategorien wie Wahrzeichen, UNESCO-Welterbe, Nationalparks, Naturwunder, Denkmäler und historische Stätten werden unterschiedlich gewichtet.
