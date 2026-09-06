@@ -13,7 +13,7 @@ const STOP_ICONS = {sight:'★',wildlife:'🐾',city:'🏙',nature:'🌿',food:'
 
 const UPDATE_REPOSITORY = 'wasserratte96-web/unser-reiseplaner';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`;
-let installedAppVersion = {versionName:'1.1.0',versionCode:2,repository:UPDATE_REPOSITORY};
+let installedAppVersion = {versionName:'1.1.1',versionCode:3,repository:UPDATE_REPOSITORY};
 let availableUpdate = null;
 
 let state = null;
@@ -129,25 +129,61 @@ const Providers={
     const j=await apiJson(u); const item=(j.search||[]).find(x=>/Land|country|Staat/i.test(`${x.description||''}`))||(j.search||[])[0];
     const q=item?.id||'';state.cache.wikidata[k]=q;persistSoon();return q;
   },
-  async attractions(country){
-    const cacheKey=`attr:${normalizeName(country)}`;if(state.cache.wikidata[cacheKey])return state.cache.wikidata[cacheKey];
-    const qid=await this.countryQid(country); if(!qid)throw new Error('Land konnte in Wikidata nicht erkannt werden.');
-    const query=`SELECT ?item ?itemLabel ?coord ?article ?sitelinks WHERE { VALUES ?class { wd:Q570116 wd:Q9259 wd:Q4830453 wd:Q23413 wd:Q46169 wd:Q33506 wd:Q4989906 } ?item wdt:P17 wd:${qid}; wdt:P31/wdt:P279* ?class; wdt:P625 ?coord. OPTIONAL { ?article schema:about ?item; schema:isPartOf <https://de.wikipedia.org/>. } ?item wikibase:sitelinks ?sitelinks. SERVICE wikibase:label { bd:serviceParam wikibase:language "de,en". } } ORDER BY DESC(?sitelinks) LIMIT 18`;
-    const u=`https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(query)}`;
-    const j=await apiJson(u); const seen=new Set(); const out=[];
-    for(const r of j.results?.bindings||[]){const name=r.itemLabel?.value;if(!name||seen.has(name))continue;const m=/Point\(([-\d.]+) ([-\d.]+)\)/.exec(r.coord?.value||'');if(!m)continue;seen.add(name);out.push({name,lat:+m[2],lng:+m[1],wiki:r.article?.value||'',score:+(r.sitelinks?.value||0)});}
-    state.cache.wikidata[cacheKey]=out;persistSoon();return out;
+  async attractions(destination){
+    const cacheKey=`attr:${normalizeName(destination)}`,cached=state.cache.wikidata[cacheKey];if(Array.isArray(cached)&&cached.length)return cached;
+    const searches=[`${destination} Sehenswürdigkeiten`,`${destination} Wahrzeichen`,`${destination} Nationalpark`];
+    const seen=new Set(), out=[];let lastError=null;
+    for(const term of searches){
+      try{
+        const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrnamespace=0&gsrlimit=12&prop=coordinates|pageimages|info&piprop=thumbnail&pithumbsize=420&inprop=url&format=json&formatversion=2&origin=*`;
+        const j=await apiJson(u);
+        for(const page of j.query?.pages||[]){
+          const name=page.title||'';if(!name||seen.has(normalizeName(name)))continue;
+          const c=page.coordinates?.[0];if(!c||!Number.isFinite(+c.lat)||!Number.isFinite(+c.lon))continue;
+          if(/^(Liste|Tourismus in|Geographie von|Geschichte von)\b/i.test(name))continue;
+          seen.add(normalizeName(name));out.push({name,lat:+c.lat,lng:+c.lon,wiki:page.fullurl||'',photo:page.thumbnail?.source||'',score:Math.max(1,100-out.length)});
+        }
+      }catch(e){lastError=e;}
+      if(out.length>=12)break;
+    }
+    if(!out.length){
+      try{
+        const geo=await this.geocode(destination,3),g=geo[0];
+        if(g){
+          const u=`https://de.wikipedia.org/w/api.php?action=query&generator=geosearch&ggsprimary=all&ggsnamespace=0&ggsradius=10000&ggslimit=25&ggscoord=${g.lat}|${g.lng}&prop=coordinates|pageimages|info&piprop=thumbnail&pithumbsize=420&inprop=url&format=json&formatversion=2&origin=*`;
+          const j=await apiJson(u);
+          for(const page of j.query?.pages||[]){const c=page.coordinates?.[0],name=page.title||'';if(!name||!c||seen.has(normalizeName(name)))continue;seen.add(normalizeName(name));out.push({name,lat:+c.lat,lng:+c.lon,wiki:page.fullurl||'',photo:page.thumbnail?.source||'',score:Math.max(1,80-out.length)});}
+        }
+      }catch(e){lastError=e;}
+    }
+    if(!out.length)throw new Error(`Sehenswürdigkeiten konnten nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
+    state.cache.wikidata[cacheKey]=out.slice(0,18);persistSoon();return state.cache.wikidata[cacheKey];
   },
   async iNatPlace(destination){
     const u=`https://api.inaturalist.org/v1/places/autocomplete?q=${encodeURIComponent(destination)}&per_page=10`;
     const j=await apiJson(u);return (j.results||[])[0]||null;
   },
   async wildlife(destination,month){
-    const key=`wild:${normalizeName(destination)}:${month||0}`; if(state.cache.wildlife[key])return state.cache.wildlife[key];
-    const place=await this.iNatPlace(destination);if(!place)throw new Error('Gebiet wurde bei iNaturalist nicht gefunden.');
-    let u=`https://api.inaturalist.org/v1/observations/species_counts?place_id=${place.id}&taxon_id=40151&quality_grade=research,needs_id&per_page=20`;
-    if(month)u+=`&month=${month}`;
-    const j=await apiJson(u);const out=(j.results||[]).map(x=>({taxonId:x.taxon?.id,name:x.taxon?.preferred_common_name||x.taxon?.name||'Unbekannt',scientific:x.taxon?.name||'',count:x.count||0,photo:x.taxon?.default_photo?.medium_url||x.taxon?.default_photo?.square_url||'',iconic:x.taxon?.iconic_taxon_name||''}));
+    const key=`wild:${normalizeName(destination)}:${month||0}`,cached=state.cache.wildlife[key];if(Array.isArray(cached)&&cached.length)return cached;
+    let j=null,lastError=null;
+    try{
+      const geo=await this.geocode(destination,3),g=geo[0];
+      if(g?.bbox?.length===4){
+        const [south,north,west,east]=g.bbox;
+        let u=`https://api.inaturalist.org/v1/observations/species_counts?taxon_id=40151&quality_grade=research,needs_id&per_page=20&locale=de&swlat=${south}&swlng=${west}&nelat=${north}&nelng=${east}`;
+        if(month)u+=`&month=${month}`;j=await apiJson(u);
+      }
+    }catch(e){lastError=e;}
+    if(!j){
+      try{
+        const place=await this.iNatPlace(destination);if(!place)throw new Error('Gebiet wurde bei iNaturalist nicht gefunden.');
+        let u=`https://api.inaturalist.org/v1/observations/species_counts?place_id=${place.id}&taxon_id=40151&quality_grade=research,needs_id&per_page=20&locale=de`;
+        if(month)u+=`&month=${month}`;j=await apiJson(u);
+      }catch(e){lastError=e;}
+    }
+    if(!j)throw new Error(`Wildlife konnte nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
+    const out=(j.results||[]).map(x=>({taxonId:x.taxon?.id,name:x.taxon?.preferred_common_name||x.taxon?.english_common_name||x.taxon?.name||'Unbekannt',scientific:x.taxon?.name||'',count:x.count||0,photo:x.taxon?.default_photo?.medium_url||x.taxon?.default_photo?.square_url||'',iconic:x.taxon?.iconic_taxon_name||''}));
+    if(!out.length)throw new Error('Für dieses Ziel und den gewählten Reisemonat wurden keine passenden Säugetier-Beobachtungen gefunden.');
     state.cache.wildlife[key]=out;persistSoon();return out;
   },
   async wildlifeObservations(taxonId,lat,lng,radius=80,month=0){
@@ -214,11 +250,16 @@ function renderDiscover(){
   const chips=$('#interestChips');chips.innerHTML='';INTERESTS.forEach(i=>{const b=document.createElement('button');b.className=`chip ${(t?.interests||[]).includes(i)?'on':''}`;b.textContent=i;b.onclick=()=>{if(!t)return;const a=t.interests||[];const p=a.indexOf(i);p>=0?a.splice(p,1):a.push(i);persistSoon();renderDiscover();};chips.appendChild(b)});
   renderSuggestionBoxes();
 }
+function renderAttractionSuggestions(attr){
+  const p=$('#poiSuggestions');if(attr?.length){p.className='suggestions';p.innerHTML=attr.slice(0,5).map((x,i)=>`<div class="suggestion">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:`<div class="thumb" style="display:grid;place-items:center;font-size:20px">${i+1}</div>`}<div><h4>${esc(x.name)}</h4><p>Wikipedia-Reiseinspiration · Vorschlag ${i+1}</p></div><button data-add-suggestion='${esc(JSON.stringify({kind:'poi',...x}))}'>+</button></div>`).join('');}else{p.className='suggestions empty';p.textContent='Noch nicht geladen.'}
+}
+function renderWildlifeSuggestions(wild){
+  const w=$('#wildSuggestions');if(wild?.length){w.className='suggestions';w.innerHTML=wild.slice(0,5).map(x=>`<div class="suggestion">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:'<div class="thumb" style="display:grid;place-items:center">🐾</div>'}<div><h4>${esc(x.name)}</h4><p><i>${esc(x.scientific)}</i> · ${x.count} Beobachtungen</p></div><button data-target-species='${esc(JSON.stringify(x))}'>Ziel</button></div>`).join('');}else{w.className='suggestions empty';w.textContent='Noch nicht geladen.'}
+}
 function renderSuggestionBoxes(){
-  const t=activeTrip(); if(!t)return;
+  const t=activeTrip();if(!t)return;
   const attr=state.cache.wikidata[`attr:${normalizeName(t.country||t.destination)}`];const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;const wild=state.cache.wildlife[`wild:${normalizeName(t.destination)}:${month}`];
-  const p=$('#poiSuggestions');if(attr?.length){p.classList.remove('empty');p.innerHTML=attr.slice(0,5).map((x,i)=>`<div class="suggestion"><div class="thumb" style="display:grid;place-items:center;font-size:20px">${i+1}</div><div><h4>${esc(x.name)}</h4><p>${x.score} Wikipedia/Wikidata-Verknüpfungen</p></div><button data-add-suggestion='${esc(JSON.stringify({kind:'poi',...x}))}'>+</button></div>`).join('');}else{p.className='suggestions empty';p.textContent='Noch nicht geladen.'}
-  const w=$('#wildSuggestions');if(wild?.length){w.classList.remove('empty');w.innerHTML=wild.slice(0,5).map(x=>`<div class="suggestion">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:'<div class="thumb" style="display:grid;place-items:center">🐾</div>'}<div><h4>${esc(x.name)}</h4><p><i>${esc(x.scientific)}</i> · ${x.count} Beobachtungen</p></div><button data-target-species='${esc(JSON.stringify(x))}'>Ziel</button></div>`).join('');}else{w.className='suggestions empty';w.textContent='Noch nicht geladen.'}
+  renderAttractionSuggestions(attr);renderWildlifeSuggestions(wild);
 }
 function dayConstraints(v,day){
   let start=timeToMin(day.startTime||state.settings.defaultStart),end=timeToMin(day.endTime||state.settings.defaultEnd),notes=[];
@@ -294,11 +335,21 @@ function flightModal(flight=null){
   });
 }
 async function discoverAll(){
-  const t=activeTrip(),v=activeVersion();if(!t||!v)return;$('#discoverBtn').classList.add('loading');
-  try{await Promise.allSettled([loadAttractions(),loadWildlife()]);renderDiscover();toast('Inspiration aktualisiert.');}finally{$('#discoverBtn').classList.remove('loading')}
+  const t=activeTrip(),v=activeVersion();if(!t||!v)return;
+  const btn=$('#discoverBtn'),old=btn.textContent;btn.classList.add('loading');btn.disabled=true;btn.textContent='Lädt …';
+  try{
+    const results=await Promise.all([loadAttractions(),loadWildlife()]);const ok=results.filter(Boolean).length;
+    toast(ok===2?'Inspiration erfolgreich geladen.':ok===1?'Ein Bereich wurde geladen; ein Bereich meldet einen Fehler.':'Inspiration konnte nicht geladen werden.');
+  }finally{btn.classList.remove('loading');btn.disabled=false;btn.textContent=old}
 }
-async function loadAttractions(){const t=activeTrip();if(!t)return;$('#poiSuggestions').innerHTML='<div class="suggestion">Sehenswürdigkeiten werden geladen …</div>';try{await Providers.attractions(t.country||t.destination);renderSuggestionBoxes();}catch(e){$('#poiSuggestions').innerHTML=`<div class="warnline errorline">${esc(e.message)}</div>`}}
-async function loadWildlife(){const t=activeTrip(),v=activeVersion();if(!t)return;$('#wildSuggestions').innerHTML='<div class="suggestion">Wildlife wird geladen …</div>';const month=v?.startDate?new Date(`${v.startDate}T12:00:00`).getMonth()+1:0;try{await Providers.wildlife(t.destination,month);renderSuggestionBoxes();}catch(e){$('#wildSuggestions').innerHTML=`<div class="warnline errorline">${esc(e.message)}</div>`}}
+async function loadAttractions(){
+  const t=activeTrip();if(!t)return false;const box=$('#poiSuggestions');box.className='suggestions';box.innerHTML='<div class="suggestion">Sehenswürdigkeiten werden geladen …</div>';
+  try{const data=await Providers.attractions(t.country||t.destination);renderAttractionSuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Sehenswürdigkeiten:</b> ${esc(e.message)}</div>`;return false}
+}
+async function loadWildlife(){
+  const t=activeTrip(),v=activeVersion();if(!t)return false;const box=$('#wildSuggestions');box.className='suggestions';box.innerHTML='<div class="suggestion">Wildlife wird geladen …</div>';const month=v?.startDate?new Date(`${v.startDate}T12:00:00`).getMonth()+1:0;
+  try{const data=await Providers.wildlife(t.destination,month);renderWildlifeSuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Wildlife:</b> ${esc(e.message)}</div>`;return false}
+}
 function addSuggestion(payload){const v=activeVersion();if(!v)return;if(payload.kind==='poi'){const day=v.days[0];const stop={id:uid('stop'),name:payload.name,lat:payload.lat,lng:payload.lng,type:'sight',priority:'high',durationMin:45,durationWish:90,notes:'Automatisch vorgeschlagenes Highlight',openingHours:'',fixedStart:'',images:[],tags:['highlight'],wildlife:[],modeToNext:'car',routeToNext:null};closeModal();editStopModal(day,stop,true)}}
 function chooseTargetSpecies(x){
   const t=activeTrip();t.targetSpecies=t.targetSpecies||[];if(!t.targetSpecies.some(y=>y.taxonId===x.taxonId))t.targetSpecies.push(x);persistSoon();

@@ -3,12 +3,16 @@ package de.unserreiseplaner.app;
 import android.app.Activity;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.graphics.Color;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.provider.Settings;
+import android.view.View;
+import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -52,7 +56,28 @@ public class MainActivity extends Activity {
         database = new DatabaseHelper(this);
 
         webView = new WebView(this);
+        webView.setBackgroundColor(Color.rgb(248, 247, 243));
         setContentView(webView);
+
+        // Android 15/16: targetSdk >= 35 läuft zwingend edge-to-edge.
+        // Die WebView erhält deshalb die realen Systemleisten-/Cutout-Inset als Padding.
+        webView.setOnApplyWindowInsetsListener((view, insets) -> {
+            int left, top, right, bottom;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                left = bars.left; top = bars.top; right = bars.right; bottom = bars.bottom;
+            } else {
+                left = insets.getSystemWindowInsetLeft();
+                top = insets.getSystemWindowInsetTop();
+                right = insets.getSystemWindowInsetRight();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+            view.setPadding(left, top, right, bottom);
+            return insets;
+        });
+        webView.requestApplyInsets();
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -62,7 +87,7 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.1");
+        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.1.1");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -180,7 +205,7 @@ public class MainActivity extends Activity {
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(60000);
                 connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.1 Android updater");
+                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.1.1 Android updater");
                 int status = connection.getResponseCode();
                 if (status < 200 || status >= 300) throw new IllegalStateException("HTTP " + status);
 
@@ -274,9 +299,15 @@ public class MainActivity extends Activity {
                     connection = (HttpURLConnection) target.openConnection();
                     connection.setRequestMethod("GET");
                     connection.setConnectTimeout(12000);
-                    connection.setReadTimeout(20000);
+                    connection.setReadTimeout(25000);
+                    connection.setInstanceFollowRedirects(true);
                     connection.setRequestProperty("Accept", "application/json,text/plain,*/*");
-                    connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.1 private Android travel planner");
+                    connection.setRequestProperty("Accept-Language", "de-DE,de;q=0.9,en;q=0.7");
+                    String agent = "UnserReiseplanerBot/1.1.1 (https://github.com/wasserratte96-web/unser-reiseplaner)";
+                    connection.setRequestProperty("User-Agent", agent);
+                    if (target.getHost().endsWith("wikipedia.org") || target.getHost().endsWith("wikimedia.org") || target.getHost().endsWith("wikidata.org")) {
+                        connection.setRequestProperty("Api-User-Agent", agent);
+                    }
                     int status = connection.getResponseCode();
                     InputStream stream = (status >= 200 && status < 300) ? connection.getInputStream() : connection.getErrorStream();
                     if (stream != null) {
@@ -287,7 +318,11 @@ public class MainActivity extends Activity {
                             body = out.toString();
                         }
                     }
-                    if (status < 200 || status >= 300) error = "HTTP " + status;
+                    if (status < 200 || status >= 300) {
+                        String detail = body == null ? "" : body.replaceAll("\\s+", " ").trim();
+                        if (detail.length() > 180) detail = detail.substring(0, 180) + "…";
+                        error = target.getHost() + ": HTTP " + status + (detail.isEmpty() ? "" : " – " + detail);
+                    }
                 } catch (Exception e) {
                     error = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Netzwerkfehler" : e.getMessage());
                 } finally {
