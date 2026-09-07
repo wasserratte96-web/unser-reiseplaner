@@ -29,15 +29,21 @@
       </section>
 
       <section class="view" id="view-discover">
-        <div class="pagehead"><div><h1>Entdecken</h1><p>Automatische Inspiration für dein Reiseziel.</p></div></div>
+        <div class="pagehead"><div><h1>Entdecken</h1><p>Baue zuerst deine Wunschliste. Daraus erstellt die App anschließend automatisch einen ersten Routenvorschlag.</p></div></div>
         <div class="hero card">
           <div><div class="eyebrow">Aktives Reiseziel</div><h2 id="discoverDestination">–</h2><p id="discoverDates">Noch kein Zeitraum gewählt.</p></div>
           <button class="primary" id="discoverBtn">Inspiration laden</button>
         </div>
+        <div class="card selectioncard">
+          <div class="sectiontitle"><span>✓ Meine Auswahl für die Route</span><span id="wishlistCount" class="versionbadge">0 ausgewählt</span></div>
+          <p class="tiny sectionhint">Markiere Städte, Natur-Highlights und Tiere, die du sehen möchtest, und vergib eine Priorität. Noch wird nichts fest in einen Reisetag geschrieben.</p>
+          <div id="wishlistSummary" class="wishlistsummary empty">Noch nichts ausgewählt.</div>
+          <div class="actions routebuildactions"><button id="clearWishlistBtn">Auswahl leeren</button><button id="autoRouteBtn" class="primary">✨ Routenvorschlag erstellen</button></div>
+        </div>
         <div class="grid2 discovergrid">
-          <div class="card"><div class="sectiontitle"><span>🏙 Sehenswerte Städte</span><button class="textbtn" id="reloadCitiesBtn">neu laden</button></div><p class="tiny sectionhint">Zunächst 5 als Stadt markierte Orte aus OpenStreetMap. Vorschaubilder und Detailtexte werden nur bei eindeutiger Wikipedia/Wikidata-Zuordnung ergänzt.</p><div id="citySuggestions" class="suggestions scrollsuggestions empty">Noch nicht geladen.</div></div>
-          <div class="card"><div class="sectiontitle"><span>★ Nationale Highlights</span><button class="textbtn" id="reloadPoiBtn">neu laden</button></div><p class="tiny sectionhint">Nur konkrete, für das Land charakteristische Sehenswürdigkeiten, Naturziele und Wahrzeichen. Treffer werden zusätzlich geografisch gegen die Landesgrenzen geprüft.</p><div id="poiSuggestions" class="suggestions scrollsuggestions empty">Noch nicht geladen.</div></div>
-          <div class="card"><div class="sectiontitle"><span>🐾 Wildlife</span><button class="textbtn" id="reloadWildBtn">neu laden</button></div><p class="tiny sectionhint">Zunächst 5 häufig gemeldete Säugetiere im Reiseziel und – soweit möglich – passend zum Reisemonat. Tierbilder werden über die exakte iNaturalist-Taxon-ID zugeordnet.</p><div id="wildSuggestions" class="suggestions scrollsuggestions empty">Noch nicht geladen.</div></div>
+          <div class="card"><div class="sectiontitle"><span>🏙 Sehenswerte Städte</span><button class="textbtn" id="reloadCitiesBtn">neu laden</button></div><p class="tiny sectionhint">Wähle interessante Städte aus und gib an, wie wichtig sie für die Reise sind. „Entdecken“ zeigt Details und später auch die Sehenswürdigkeiten der Stadt.</p><div id="citySuggestions" class="suggestions scrollsuggestions empty">Noch nicht geladen.</div></div>
+          <div class="card"><div class="sectiontitle"><span>★ Natur & nationale Highlights</span><button class="textbtn" id="reloadPoiBtn">neu laden</button></div><p class="tiny sectionhint">Wähle charakteristische Naturziele und landesweite Highlights für die automatische Route aus. Die eigentliche Tageszuordnung erfolgt erst beim Routenvorschlag.</p><div id="poiSuggestions" class="suggestions scrollsuggestions empty">Noch nicht geladen.</div></div>
+          <div class="card"><div class="sectiontitle"><span>🐾 Wildlife</span><button class="textbtn" id="reloadWildBtn">neu laden</button></div><p class="tiny sectionhint">Markiere Tiere, die du möglichst sehen möchtest. Die automatische Planung versucht daraus passende Wildlife-Stopps bzw. Hotspots abzuleiten.</p><div id="wildSuggestions" class="suggestions scrollsuggestions empty">Noch nicht geladen.</div></div>
         </div>
         <div class="card"><div class="sectiontitle"><span>Interessen</span></div><div id="interestChips" class="chips"></div></div>
       </section>

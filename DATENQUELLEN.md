@@ -26,3 +26,9 @@ Ein beliebiges erstes Wikipedia-Suchergebnis wird nicht mehr verwendet.
 
 ## Nominatim / OSRM / ADSBDB
 Diese Quellen liefern primär Koordinaten, Routing bzw. Flugrouten. Sie werden nicht als freie Quelle für Kurzbeschreibungen oder Fotos verwendet.
+
+## V1.2.0 – automatische Routenplanung
+
+Die automatische Routenplanung verwendet **keine vermeintlich exakten Buchungsdaten**, wenn diese nicht aus einer belastbaren kostenlosen Quelle verfügbar sind. Geografische Punkte stammen aus den bereits verifizierten Entdecken-Daten. Wildlife-Hotspots werden aus iNaturalist-Beobachtungen abgeleitet. Straßenentfernungen bzw. grobe Verkehrsmittelentscheidungen dienen nur als Planungsheuristik.
+
+Automatisch erzeugte Verbindungen, Transfers und Unterkünfte werden deshalb als **Platzhalter** gekennzeichnet. Unbekannte Flug-/Zugnummern, Betreiber, Adressen und Buchungsdaten bleiben leer und erscheinen als gelber offener Punkt, bis der Nutzer sie später konkretisiert.

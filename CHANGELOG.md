@@ -1,19 +1,19 @@
 # Changelog
 
-## 1.1.5
-- Datenkonsistenz grundlegend überarbeitet: keine freie Wikipedia-/Commons-Trefferauswahl mehr nach "erstem Suchergebnis".
-- Städte stammen nur noch aus OpenStreetMap-Objekten mit `place=city`; Bundesstaaten/Regionen wie Tasmania, New South Wales oder Victoria werden nicht mehr als Stadt ergänzt.
-- Stadt-Thumbnails werden über OSM-Wikipedia/Wikidata-ID oder streng geprüfte Geo-/Namenszuordnung geladen.
-- Stadt-Sehenswürdigkeiten bleiben durch eine Radiusprüfung an die gewählte Stadt gebunden; Distanz zum Stadtzentrum wird angezeigt.
-- Wikipedia-Kurzinfos werden nur bei exakter OSM-Wikipedia/Wikidata-Verknüpfung oder bei gleichzeitig passender Geoposition und hoher Namensübereinstimmung übernommen.
-- Wikimedia-Bilder werden nur aus der eindeutig zugeordneten Wikipedia-Seite oder aus streng namensgefilterten Commons-Treffern übernommen. Im Zweifel zeigt die App lieber kein Bild/keinen Fremdtext als einen falschen Inhalt.
-- Wildlife-Fotos werden über dieselbe iNaturalist-Taxon-ID wie der Tiervorschlag geladen.
-- Nationale Highlights werden zusätzlich gegen die geografische Bounding-Box des Ziellandes geprüft.
-- Overpass-Abfragen besitzen jetzt sequenzielles Server-Failover (Private.coffee → overpass-api.de → VK Maps). Ein einzelner HTTP-504-Fehler beendet die Suche daher nicht mehr.
-- HTML/XML-Fehlerseiten externer APIs werden nicht mehr vollständig in der Oberfläche angezeigt.
-- Alte, potenziell falsch zugeordnete Inspirations-/Foto-Caches aus 1.1.4 werden beim Upgrade verworfen; Reise-, Tages-, Unterkunfts- und Transferdaten bleiben erhalten.
+## 1.2.0
+- **Entdecken grundlegend neu aufgebaut:** Vorschläge werden nicht mehr direkt als Reisetags-Stopp gespeichert, sondern zunächst in einer reiseweiten Wunschliste gesammelt.
+- Städte, nationale Highlights und Wildlife lassen sich mit **Muss / Hoch / Mittel / Optional** priorisieren.
+- Bereits ausgewählte Vorschläge sind direkt mit einem **Häkchen** markiert.
+- Neue Übersicht **„Meine Auswahl für die Route“** mit allen ausgewählten Zielen.
+- Neue Funktion **„Routenvorschlag erstellen“**: legt aus Auswahl, Prioritäten, Reisedauer und geografischer Nähe automatisch eine neue Reiseversion an.
+- Der automatische Entwurf erzeugt die notwendigen Planungsbausteine: Highlight-/Stadt-/Wildlife-Stopps, Unterkunfts-Platzhalter, Langstrecken-Verbindungen, Transfers und erste zeitliche Schätzungen.
+- Konkrete Buchungsdaten bleiben bewusst offen: Flug-/Zugnummern, Betreiber, Unterkunftsadressen, Buchungsreferenzen und noch unbestimmte Verkehrsmittel können später ergänzt werden.
+- Offene oder nur geschätzte Angaben werden im Planer mit **gelbem ⚠-Hinweis** dargestellt; die Kopfzeile zeigt die Gesamtzahl offener Punkte.
+- Wildlife-Ziele werden für den Routenvorschlag nach Möglichkeit automatisch mit einem iNaturalist-Beobachtungscluster im Reiseland verknüpft.
+- Wenn die Auswahl für den Zeitraum zu groß ist, werden niedrig priorisierte bzw. geografisch nicht auflösbare Ziele sichtbar als **„nicht eingeplant“** geführt und nicht aus der Wunschliste gelöscht.
+- Alte in 1.1.x gespeicherte Wildlife-Zielarten werden beim ersten Start soweit möglich in die neue Wunschliste übernommen.
 
-## 1.1.4
-- Detail-Popups mit mehreren Bildern.
-- Flexible Langstrecken-Verbindungen und Transfer-Bausteine.
-- Verfeinerte Tagesplanung und Android-Safe-Area-Anpassungen.
+## 1.1.5
+- Externe Inhalte werden strenger auf Name, Geografie und IDs geprüft.
+- Stadt- und Sehenswürdigkeitsbilder werden nur bei belastbarer Zuordnung angezeigt.
+- Overpass-Anfragen nutzen mehrere öffentliche Endpunkte als Fallback.
