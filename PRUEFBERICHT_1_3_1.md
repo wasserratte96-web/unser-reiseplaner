@@ -18,7 +18,14 @@ Lokale Prüfung: `bash tools/verify.sh`. Sie prüft Versionskonsistenz, Projekts
 
 Alle 31 Tests bestehen. Beide Workflow-YAML-Dateien und ihre 12 Shell-Schritte wurden zusätzlich auf Syntax geprüft. Das Einspielen von 1.3.0 auf 1.3.1 wurde in einem isolierten Linux-Git-Checkout erprobt: vollständige Dateiübernahme, Backup des bisherigen committeten Quellcodes und Erhalt eigener Zusatzdateien, lokaler SDK-Konfiguration sowie lokaler Signaturdateien bestanden. Dies war kein Probelauf auf einem physischen Termux-Gerät.
 
-Die neue GitHub-Prüfung wird auf dem Korrekturzweig ausgeführt. Das endgültige Ergebnis wird nach Abschluss dokumentiert; ein ausstehender Lauf ist kein nachgewiesener Android-Build.
+Der GitHub-Lauf [34500418773](https://github.com/wasserratte96-web/unser-reiseplaner/actions/runs/34500418773), Job `102949507977`, ist **erfolgreich**. Geprüfter Quellcode-Commit: `37bc7bf9f5c58ef8613d45fca73a92de28d81f92`. Das Protokoll bestätigt:
+
+- SDK-Einrichtung und Prüfung der erforderlichen Werkzeuge erfolgreich.
+- Projektstruktur und Version 1.3.1 konsistent; 31 Funktionstests bestanden, 0 fehlgeschlagen.
+- `assembleDebug`, `lintDebug`, `assembleRelease` und `lintRelease` erfolgreich; `BUILD SUCCESSFUL in 1m 27s` am 10. September 2026 um 16:12 UTC.
+- Debug-Prüf-APK als GitHub-Artefakt `Unser-Reiseplaner-Debug-Pruefung`, ID `10161667968`, bereitgestellt. Dieses Artefakt ist ein Prüfprodukt und nicht die signierte Update-APK.
+
+Nach diesem Lauf wurden nur Prüfdokumentation und Paket-Prüfsummen vervollständigt. Die APK-relevanten Quellen und Build-Konfigurationen des ZIPs entsprechen dem erfolgreich geprüften Commit. Die Korrektur ist zusätzlich als [GitHub-Vorschlag #1](https://github.com/wasserratte96-web/unser-reiseplaner/pull/1) vorhanden; der Smartphone-Weg spielt das vollständige ZIP in den vorhandenen main-Checkout ein.
 
 ## Umfang und Grenzen
 
@@ -26,4 +33,4 @@ Die Reparatur betrifft die Build-Einrichtung, native Zurück-Navigation, Version
 
 Ein signierter Release verwendet weiterhin die bestehenden Repository-Secrets und den fortlaufenden CI-Versionscode. Ein erfolgreicher Debug-Build bestätigt weder die Release-Signatur noch die Installation über die vorhandene APK. Dies prüft der Release-Ablauf separat.
 
-Die Bedienung auf Pixel 6 Pro / Android 17 und Live-Abrufe aller externen Dienste sind hier weiterhin nicht auf einem Gerät geprüft. Nach Installation sind Start/Statusleisten, Reise-Backup, Bearbeiten/Abbrechen, Karte und Entdecken → Wunschliste → Route zu prüfen. Die in `PRUEFBERICHT_1_3_0.md` beschriebenen Produktgrenzen bleiben gültig.
+Die Bedienung auf Pixel 6 Pro / Android 17 und Live-Abrufe aller externen Dienste sind hier weiterhin nicht auf einem Gerät geprüft. Nach Installation sind Start/Statusleisten, Zurück-Geste und Zurück-Taste, Reise-Backup, Bearbeiten/Abbrechen, Karte und Entdecken → Wunschliste → Route zu prüfen. Die in `PRUEFBERICHT_1_3_0.md` beschriebenen Produktgrenzen bleiben gültig.

@@ -44,8 +44,8 @@
     },
     {
       "path": "PRUEFBERICHT_1_3_1.md",
-      "bytes": 4068,
-      "sha256": "4ad886c4ec99e21ce5336362c5d52bc47c135c7f08fadca45a4455ae5637fc6a"
+      "bytes": 5076,
+      "sha256": "2b839529dc174e637847bffd89cf3d167124510ce8a92f35266ced539c381bf9"
     },
     {
       "path": "QUELLSTAND.json",
@@ -54,8 +54,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3425,
-      "sha256": "c9cf0cc34d043e83d0686762a4d9620ab499a958debeb09b830e7c734912f534"
+      "bytes": 3622,
+      "sha256": "a95e400ffd56771fb881c9179c366cc6bf96b922e514d40f4fdacfe34f308c85"
     },
     {
       "path": "TESTERGEBNIS_1_3_0.txt",

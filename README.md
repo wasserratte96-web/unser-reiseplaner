@@ -42,4 +42,4 @@ Alternativ den entpackten Projektordner in Android Studio öffnen. `INSTALLATION
 - `tests/`: Regressionen und Datenquellenverträge; `tools/`: Prüfung und Smartphone-Update.
 - Native App, Ressourcen, Web-Oberfläche, Gradle-Wrapper und beide GitHub-Workflows sind vollständig enthalten.
 
-Der aktuelle Prüfstatus steht in `PRUEFBERICHT_1_3_1.md`. Für das Update über eine vorhandene Installation die signierte APK des Release-Workflows verwenden. Die Geräteprüfung auf Pixel 6 Pro / Android 17 bleibt erforderlich.
+Debug- und Release-Build, beide Lint-Prüfungen und 31 Funktionstests wurden im [GitHub-Lauf 34500418773](https://github.com/wasserratte96-web/unser-reiseplaner/actions/runs/34500418773) erfolgreich geprüft. Der Nachweis steht in `PRUEFBERICHT_1_3_1.md`. Für das Update über eine vorhandene Installation die signierte APK des Release-Workflows verwenden. Die Geräteprüfung auf Pixel 6 Pro / Android 17 bleibt erforderlich.
