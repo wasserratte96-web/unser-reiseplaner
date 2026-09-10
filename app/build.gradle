@@ -2,8 +2,8 @@ plugins {
     id 'com.android.application'
 }
 
-def ciVersionName = (project.findProperty('ciVersionName') ?: '1.3.0').toString()
-def ciVersionCode = (project.findProperty('ciVersionCode') ?: '9').toString().toInteger()
+def ciVersionName = (project.findProperty('ciVersionName') ?: '1.3.1').toString()
+def ciVersionCode = (project.findProperty('ciVersionCode') ?: '10').toString().toInteger()
 def signingPath = System.getenv('URP_KEYSTORE_PATH')
 
 android {

@@ -1,5 +1,5 @@
 name: Projekt prüfen
-run-name: ${{ inputs.request_id || github.sha }}
+run-name: ${{ inputs.request_id || github.event.pull_request.head.sha || github.sha }}
 on:
   push:
     branches: [main]
@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.source_sha || github.sha }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -40,7 +40,18 @@ jobs:
             test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           fi
       - name: Android-SDK vorbereiten
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          cmdline-tools-version: '14742923'
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          log-accepted-android-sdk-licenses: 'false'
+      - name: Android-SDK prüfen
+        run: |
+          command -v sdkmanager
+          test -n "${ANDROID_HOME:-}"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/aapt"
       - name: Projekt, Regressionen und Android-Build prüfen
         run: bash tools/verify.sh --android
       - name: Prüf-APK bereitstellen

@@ -2,7 +2,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),vm=require('node:vm');
 const root=path.resolve(__dirname,'..'),read=name=>fs.readFileSync(path.join(root,name),'utf8'),version=JSON.parse(read('VERSION.json'));
-for(const name of ['gradlew','gradlew.bat','gradle/wrapper/gradle-wrapper.jar','gradle/wrapper/gradle-wrapper.properties','settings.gradle','build.gradle','app/build.gradle','app/src/main/AndroidManifest.xml','app/src/main/java/de/unserreiseplaner/app/MainActivity.java','app/src/main/java/de/unserreiseplaner/app/DatabaseHelper.java','CHANGELOG.md','README.md','UPDATE_1_3_0_TERMUX.md'])assert.ok(fs.statSync(path.join(root,name)).size>0,name+' fehlt');
+for(const name of ['gradlew','gradlew.bat','gradle/wrapper/gradle-wrapper.jar','gradle/wrapper/gradle-wrapper.properties','settings.gradle','build.gradle','app/build.gradle','app/src/main/AndroidManifest.xml','app/src/main/java/de/unserreiseplaner/app/MainActivity.java','app/src/main/java/de/unserreiseplaner/app/DatabaseHelper.java','CHANGELOG.md','README.md','UPDATE_'+version.versionName.replaceAll('.','_')+'_TERMUX.md'])assert.ok(fs.statSync(path.join(root,name)).size>0,name+' fehlt');
 const app=read('app/src/main/assets/www/js/app.js'),html=read('app/src/main/assets/www/index.html'),gradle=read('app/build.gradle');
 assert.ok(gradle.includes("?: '"+version.versionName+"'"),'Versionsname in Gradle');
 assert.ok(gradle.includes("?: '"+version.versionCode+"'"),'Versionscode in Gradle');

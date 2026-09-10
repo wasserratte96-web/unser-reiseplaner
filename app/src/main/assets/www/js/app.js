@@ -15,7 +15,7 @@ const WISH_PRIORITIES={must:{label:'Muss',weight:4},high:{label:'Hoch',weight:3}
 
 const UPDATE_REPOSITORY = 'wasserratte96-web/unser-reiseplaner';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`;
-let installedAppVersion = {versionName:'1.3.0',versionCode:9,repository:UPDATE_REPOSITORY};
+let installedAppVersion = {versionName:'1.3.1',versionCode:10,repository:UPDATE_REPOSITORY};
 let availableUpdate = null;
 
 let state = null;

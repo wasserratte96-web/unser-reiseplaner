@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1 – 2026-09-10
+
+- GitHub-Buildfehler `sdkmanager: command not found` (Exit 127) behoben: Prüf- und Release-Workflow richten die Android-Kommandozeilenwerkzeuge, Lizenzen, SDK-Pfade, API 36 und Build Tools 36.0.0 ausdrücklich ein.
+- Android-Einrichtung auf einen geprüften Action-Commit und eine feste Command-Line-Tools-Version festgelegt; SDK, `apksigner` und `aapt` werden vor dem Build geprüft.
+- Pull-Request-Prüfungen bauen den tatsächlichen Quellcode-Commit des Vorschlags.
+- Termux-Update akzeptiert jetzt auch den bereits übertragenen Quellstand 1.3.0 und kann nach dessen fehlgeschlagenem Build fortgesetzt werden.
+- Versionsanzeige, native User-Agents, Gradle, Paketmetadaten und Dokumentation auf 1.3.1 / lokalen Versionscode 10 angehoben. Reise-Datenschema bleibt 6.
+- Alle Funktionsänderungen und Regressionstests aus 1.3.0 sind enthalten. Prüfstatus und Wiederaufnahme: `PRUEFBERICHT_1_3_1.md` und `UPDATE_1_3_1_TERMUX.md`.
+
 ## 1.3.0 – 2026-09-09
 
 - Neuer separat prüfbarer Routenkern für Zeitbudgets, Besuchsdauer, Fahrten, Pausen, Transfers und Übernachtungen.
