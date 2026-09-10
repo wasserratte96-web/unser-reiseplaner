@@ -8,13 +8,13 @@ In der App unter **Mehr → Backup exportieren** eine aktuelle Reisesicherung er
 
 ## 2. Korrektur einspielen und signierte APK bauen
 
+Termux, Speicherzugriff und GitHub sind nach deinem erfolgreichen Upload bereits eingerichtet. Falls eines der benötigten Programme fehlt, vorher `pkg install -y git gh unzip rsync nodejs tar` ausführen. Nur bei fehlendem Zugriff auf Downloads separat `termux-setup-storage` ausführen und die Android-Freigabe bestätigen.
+
 Den folgenden Block vollständig in Termux einfügen. Er läuft in einer eigenen Bash und stoppt beim ersten Fehler. Deine vorhandene GitHub-Anmeldung und die vier Android-Signatur-Secrets werden weiterverwendet.
 
 ```bash
 bash <<'URP_UPDATE'
 set -euo pipefail
-pkg install -y git gh unzip rsync nodejs tar
-termux-setup-storage
 gh auth status
 cd "$HOME/unser-reiseplaner"
 test -z "$(git status --porcelain)" || {
@@ -30,7 +30,7 @@ bash tools/publish-mobile.sh 1.3.1
 URP_UPDATE
 ```
 
-Falls Termux bereits Speicherzugriff hat, die vorhandene Freigabe weiterverwenden. Meldet `gh auth status` eine fehlende Anmeldung, einmal `gh auth login` und `gh auth setup-git` ausführen und den Block erneut starten.
+Meldet `gh auth status` eine fehlende Anmeldung, einmal `gh auth login` und `gh auth setup-git` ausführen und den Block erneut starten.
 
 Das Einspielen unterstützt die bekannten Quellstände 1.0.0 bis 1.3.0. Vor dem Kopieren werden Projektstruktur und Funktionstests geprüft und der bisherige committete Quellcode neben dem Checkout gesichert. Eigene Zusatzdateien, lokale SDK-Konfiguration, Git-Verzeichnis und lokale Schlüssel bleiben erhalten. Diese Quellcodesicherung ergänzt das separate Reise-Backup.
 

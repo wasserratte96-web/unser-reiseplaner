@@ -19,8 +19,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 11283,
-      "sha256": "327be8976a3451860639c84181a2d2a0166b9455c52468c647b816f7271a02c9"
+      "bytes": 11853,
+      "sha256": "427cfb1e4b44884523ebc1dd0a8de408e9b9fd34867c685ed5b96d43412801e1"
     },
     {
       "path": "DATENQUELLEN.md",
@@ -44,8 +44,8 @@
     },
     {
       "path": "PRUEFBERICHT_1_3_1.md",
-      "bytes": 2803,
-      "sha256": "2d2ccf639c054798154031822c7580cc9ddd9438dd7bf43faebcc36afbfdf416"
+      "bytes": 4068,
+      "sha256": "4ad886c4ec99e21ce5336362c5d52bc47c135c7f08fadca45a4455ae5637fc6a"
     },
     {
       "path": "QUELLSTAND.json",
@@ -54,8 +54,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3381,
-      "sha256": "4b1af5a94ccf173e5fb082dfa641353bb522ae5d3572bff18e6df4a19a100e6a"
+      "bytes": 3425,
+      "sha256": "c9cf0cc34d043e83d0686762a4d9620ab499a958debeb09b830e7c734912f534"
     },
     {
       "path": "TESTERGEBNIS_1_3_0.txt",
@@ -104,8 +104,8 @@
     },
     {
       "path": "UPDATE_1_3_1_TERMUX.md",
-      "bytes": 3728,
-      "sha256": "fadf6571062bd4fb248df8fbe21ee18541007f6ad9167b57413ddd4c9467484b"
+      "bytes": 3906,
+      "sha256": "f819782e01c915e2bc6150ffadc05c25b794c805c62dd9e5f8ef2c7256e649c5"
     },
     {
       "path": "UPDATE_EINRICHTUNG_GITHUB.md",
@@ -119,8 +119,8 @@
     },
     {
       "path": "app/build.gradle",
-      "bytes": 1270,
-      "sha256": "267c179921e5fa5085bf06760265bfbc6d55d9d82372e1fb8b681667176552c3"
+      "bytes": 1343,
+      "sha256": "a93ffe2891c5d635c8c3c548bf98877e25695b27466906fda4d17ea03a341631"
     },
     {
       "path": "app/proguard-rules.pro",
@@ -129,8 +129,8 @@
     },
     {
       "path": "app/src/main/AndroidManifest.xml",
-      "bytes": 795,
-      "sha256": "c17ba347f02ea247d87d63ffd00def64ad8b1e6128698f446e16ca94a2f4d92b"
+      "bytes": 850,
+      "sha256": "c76f231902400eaaa9ae716bffae1253f1f3f427f4d26bb247cf11417bc6a60e"
     },
     {
       "path": "app/src/main/assets/www/css/app.css",
@@ -159,8 +159,8 @@
     },
     {
       "path": "app/src/main/java/de/unserreiseplaner/app/MainActivity.java",
-      "bytes": 23018,
-      "sha256": "c0e703bac3da5801996f0df474b1fc64aebbc75a32a9e7330159471e784a5361"
+      "bytes": 23816,
+      "sha256": "2e55d8928e040edbc3c8f05bf8f560fcaf9a14954b8c02debada0ddd87bddafa"
     },
     {
       "path": "app/src/main/res/drawable/ic_launcher.xml",
@@ -199,8 +199,8 @@
     },
     {
       "path": "gradle.properties",
-      "bytes": 110,
-      "sha256": "cc38bc495ca4e4d7fa2fe7c9c1112f36af7a63fbf4fc3e7a088e215942403385"
+      "bytes": 109,
+      "sha256": "e6b436ff6a08da8b8c05e0e2fc1a7f40f41701bb506cd80fc2ddfd7b6e3b3b2b"
     },
     {
       "path": "gradlew",
@@ -264,8 +264,8 @@
     },
     {
       "path": "tools/verify.sh",
-      "bytes": 346,
-      "sha256": "000acd0bef5076696ea45a52ab973ec15dde81a44168fda2105f17c56eb773c9"
+      "bytes": 374,
+      "sha256": "3823af203082b9dc5ceb0cf4246b807d30d799112771315d3730e7888b7d9bbf"
     }
   ]
 }

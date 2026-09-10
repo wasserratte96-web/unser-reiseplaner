@@ -25,6 +25,9 @@ import android.widget.Toast;
 import android.widget.FrameLayout;
 import android.view.ViewGroup;
 
+import androidx.activity.ComponentActivity;
+import androidx.activity.OnBackPressedCallback;
+
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -40,7 +43,7 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class MainActivity extends Activity {
+public class MainActivity extends ComponentActivity {
     private static final String UPDATE_REPOSITORY = "wasserratte96-web/unser-reiseplaner";
     private static final int FILE_CHOOSER_REQUEST = 4001;
 
@@ -49,6 +52,14 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> filePathCallback;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
     private DatabaseHelper database;
+    // Only intercept Back while there is a WebView history entry. At the root,
+    // Android keeps its default back-to-home behavior and predictive animation.
+    private final OnBackPressedCallback webBackCallback = new OnBackPressedCallback(false) {
+        @Override
+        public void handleOnBackPressed() {
+            if (webView != null && webView.canGoBack()) webView.goBack();
+        }
+    };
 
     private boolean waitingForInstallPermission = false;
     private String pendingUpdateUrl = null;
@@ -109,6 +120,16 @@ public class MainActivity extends Activity {
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+                webBackCallback.setEnabled(view.canGoBack());
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                webBackCallback.setEnabled(view.canGoBack());
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String url = uri.toString();
@@ -140,6 +161,7 @@ public class MainActivity extends Activity {
         });
 
         webView.addJavascriptInterface(new NativeBridge(), "AndroidBridge");
+        getOnBackPressedDispatcher().addCallback(this, webBackCallback);
         webView.loadUrl("file:///android_asset/www/index.html");
     }
 
@@ -223,12 +245,6 @@ public class MainActivity extends Activity {
             filePathCallback.onReceiveValue(result);
             filePathCallback = null;
         }
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
     }
 
     @Override

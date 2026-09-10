@@ -2,7 +2,7 @@
 
 Vollständiges Android-Quellcodeprojekt auf Basis von Version 1.2.0. Schwerpunkt: aus Prioritäten eine zeitlich nachvollziehbare Route erzeugen und bekannte Fehler ohne Verlust der vorhandenen Funktionen beheben.
 
-Version 1.3.1 behebt den GitHub-Buildabbruch `sdkmanager: command not found` und unterstützt das Update vom bereits hochgeladenen Quellstand 1.3.0. Alle nachstehenden Funktionsverbesserungen aus 1.3.0 sind enthalten.
+Version 1.3.1 behebt den GitHub-Buildabbruch `sdkmanager: command not found`, modernisiert die native Zurück-Navigation und unterstützt das Update vom bereits hochgeladenen Quellstand 1.3.0. Alle nachstehenden Funktionsverbesserungen aus 1.3.0 sind enthalten.
 
 ## Was sich ändert
 
