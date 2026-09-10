@@ -1,0 +1,43 @@
+Lokale Projektpruefung, Version 1.3.0, 9. September 2026
+Kein Android-Build, kein Live-API- oder Geraetetest.
+
+Projektstruktur, JavaScript und Versionskonsistenz 1.3.0 geprüft. APK-Build separat erforderlich.
+✔ canceling connection mode edits leaves the saved connection unchanged (6.830511ms)
+✔ canceling transfer mode edits leaves the saved transfer unchanged (15.719999ms)
+✔ an old detail response cannot attach controls to a newer dialog (6.70792ms)
+✔ a false native save result is reported as an error (2.59105ms)
+✔ editing a connection moves its associated transfer dates and invalidates changed terminals (4.658318ms)
+✔ recalculating stop routes does not double count an explicit automatic connection (8.729682ms)
+✔ calendar days are stable across DST, leap days and invalid dates (2.451234ms)
+✔ coordinate validation preserves real zero and rejects empty/out of range values (0.28508ms)
+✔ nearby mandatory wishes cannot overflow the final day (10.491941ms)
+✔ a road journey across Australia is split into driving days, never silently flown (0.926326ms)
+✔ priority is honored before optional detours and start/end anchors are retained (0.537373ms)
+✔ requested city stay days are respected without duplicating unrequested city days (0.566135ms)
+✔ verified road estimates determine feasibility and disconnected routes stay deferred (0.557792ms)
+✔ flight transfers and buffers form a single chronological reservation (0.487048ms)
+✔ NoRoute is distinct from a temporary OSRM outage (8.412354ms)
+✔ public wildlife anchors exclude captive, obscured and inaccurate observations (2.276567ms)
+✔ hotspots use the country place ID and an actual observation, never a synthetic centre (4.114416ms)
+✔ city search uses the OSM area identity instead of the country bounding rectangle (2.924452ms)
+✔ nature discovery rejects a foreign country and an ordinary city (5.627227ms)
+✔ wrongly linked Wikipedia text without a geographic identity is not accepted (6.987664ms)
+✔ a failed highlight subquery preserves cultural landmarks from successful queries (3.722639ms)
+✔ migration and import preserve legacy flights and target species without sharing objects (7.135697ms)
+✔ moving lodging invalidates associated route measurements and transfer certainty (2.743695ms)
+✔ the same city name at different coordinates creates distinct wishes (4.864803ms)
+✔ missing wildlife coordinates invoke the taxon hotspot lookup (7.638108ms)
+✔ choosing a wish never turns absent coordinates into Null Island (24.339504ms)
+✔ a fully blocked day cannot report positive buffer for an unscheduled visit (5.274678ms)
+✔ check-out date is excluded when choosing a night at an accommodation (2.546424ms)
+✔ a copied route remaps connection and lodging references independently (2.831575ms)
+✔ a connection only blocks days it actually crosses (4.062109ms)
+✔ the generated model is feasible in the actual day renderer and preserves its base (9.825758ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 156.184881

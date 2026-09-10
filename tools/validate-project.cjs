@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),vm=require('node:vm');
+const root=path.resolve(__dirname,'..'),read=name=>fs.readFileSync(path.join(root,name),'utf8'),version=JSON.parse(read('VERSION.json'));
+for(const name of ['gradlew','gradlew.bat','gradle/wrapper/gradle-wrapper.jar','gradle/wrapper/gradle-wrapper.properties','settings.gradle','build.gradle','app/build.gradle','app/src/main/AndroidManifest.xml','app/src/main/java/de/unserreiseplaner/app/MainActivity.java','app/src/main/java/de/unserreiseplaner/app/DatabaseHelper.java','CHANGELOG.md','README.md','UPDATE_1_3_0_TERMUX.md'])assert.ok(fs.statSync(path.join(root,name)).size>0,name+' fehlt');
+const app=read('app/src/main/assets/www/js/app.js'),html=read('app/src/main/assets/www/index.html'),gradle=read('app/build.gradle');
+assert.ok(gradle.includes("?: '"+version.versionName+"'"),'Versionsname in Gradle');
+assert.ok(gradle.includes("?: '"+version.versionCode+"'"),'Versionscode in Gradle');
+assert.ok(app.includes("versionName:'"+version.versionName+"',versionCode:"+version.versionCode),'Versionsanzeige der App');
+assert.equal(JSON.parse(read('package.json')).version,version.versionName);
+assert.ok(read('app/src/main/java/de/unserreiseplaner/app/MainActivity.java').includes('UnserReiseplaner/'+version.versionName),'Native Versionsanzeige');
+assert.ok(read('CHANGELOG.md').includes('## '+version.versionName),'Changelog');
+for(const file of ['planner-core.js','app.js'])new vm.Script(read('app/src/main/assets/www/js/'+file),{filename:file});
+assert.ok(html.indexOf('js/planner-core.js')<html.indexOf('js/app.js'),'Ladereihenfolge');
+for(const match of html.matchAll(/(?:src|href)="([^"#]+)"/g))if(!/^https?:/.test(match[1]))assert.ok(fs.existsSync(path.join(root,'app/src/main/assets/www',match[1])),match[1]+' fehlt');
+const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length,'Doppelte IDs im Hauptdokument');
+assert.match(gradle,/applicationId 'de\.unserreiseplaner\.app'/);
+assert.ok(read('.github/workflows/build-release.yml').includes('--target "$SOURCE_SHA"'),'Release muss zum geprüften Commit gehören');
+assert.ok(read('.github/workflows/build-release.yml').includes('node --test'),'Tests vor Release');
+console.log(`Projektstruktur, JavaScript und Versionskonsistenz ${version.versionName} geprüft. APK-Build separat erforderlich.`);

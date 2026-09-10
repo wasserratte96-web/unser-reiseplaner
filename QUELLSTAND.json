@@ -1,0 +1,47 @@
+{
+  "base": "Unser_Reiseplaner_V1_2_0_Update.zip",
+  "reviewedAt": "2026-09-09",
+  "archives": [
+    {
+      "filename": "Unser_Reiseplaner_V1_2_0_Update.zip",
+      "sha256": "2451205456f4d978ff029062d07334c6f90fcb1004a59a3d72e9805a9b86769c",
+      "sizeBytes": 90344
+    },
+    {
+      "filename": "Unser_Reiseplaner_V1_1_5_Update.zip",
+      "sha256": "771d34e36b48d47f82cc7f9a11fa0266fa150344e52e3bb51c5d97ea2eeedeb9",
+      "sizeBytes": 81185
+    },
+    {
+      "filename": "Unser_Reiseplaner_V1_1_4_Update.zip",
+      "sha256": "0daf09bf5eb7318531d5b89fe7f52a15abebe8ef79d9a65617ad0d2f087f471f",
+      "sizeBytes": 77283
+    },
+    {
+      "filename": "Unser_Reiseplaner_V1_1_3_Update.zip",
+      "sha256": "7366649fb2fdcd84763afa9bec081d7382a6205cf472cd42e13b5882ea53a609",
+      "sizeBytes": 69381
+    },
+    {
+      "filename": "Unser_Reiseplaner_V1_1_2_Update.zip",
+      "sha256": "6c22498c6071e9618a14f0734653fe082ff9c53658a38f3a8f95d5a18ae913ab",
+      "sizeBytes": 63271
+    },
+    {
+      "filename": "Unser_Reiseplaner_V1_1_1_Update.zip",
+      "sha256": "55d2d01348e5d539f49e13be1e9fbdb0b5ee07363109f17093b36c808d24be08",
+      "sizeBytes": 59644
+    },
+    {
+      "filename": "Unser_Reiseplaner_V1_1_Update.zip",
+      "sha256": "065dcf7731b7972452adddc441a5e5d9f18b122ac68beb67e98b55f1e4a968bc",
+      "sizeBytes": 55590
+    },
+    {
+      "filename": "Unser_Reiseplaner_V1.zip",
+      "sha256": "e5887c20ada97cb00c1810b66831e791a485a79cc977d9da2aaad6e4a91df3d7",
+      "sizeBytes": 47284
+    }
+  ],
+  "remoteCommitVerified": false
+}

@@ -1,5 +1,6 @@
 (() => {
 'use strict';
+const Planner = window.URPPlanner;
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -14,7 +15,7 @@ const WISH_PRIORITIES={must:{label:'Muss',weight:4},high:{label:'Hoch',weight:3}
 
 const UPDATE_REPOSITORY = 'wasserratte96-web/unser-reiseplaner';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`;
-let installedAppVersion = {versionName:'1.2.0',versionCode:8,repository:UPDATE_REPOSITORY};
+let installedAppVersion = {versionName:'1.3.0',versionCode:9,repository:UPDATE_REPOSITORY};
 let availableUpdate = null;
 
 let state = null;
@@ -23,8 +24,10 @@ let mapReady = false;
 let mapStopLayer = null;
 let mapRouteLayer = null;
 let mapDayVisible = new Set();
+let mapVersionId=null;
 let saveTimer = null;
 let currentView = 'trips';
+let modalGeneration=0;
 const discoverVisible = {cities:5,attractions:5,wildlife:5};
 const verifiedEnrichmentPending=new Set();
 
@@ -39,7 +42,7 @@ const NativeHttp = window.NativeHttp = {
         setTimeout(()=>{ if(this.pending.has(id)){this.pending.delete(id); reject(new Error('Zeitüberschreitung'));}},25000);
       });
     }
-    return fetch(url,{headers:{'Accept':'application/json'}}).then(r=>{if(!r.ok) throw new Error(`HTTP ${r.status}`);return r.text();});
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),22000);return fetch(url,{headers:{'Accept':'application/json'},signal:controller.signal}).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.text();}).finally(()=>clearTimeout(timer));
   },
   __resolve(id,body,error){
     const p=this.pending.get(id); if(!p) return;
@@ -48,9 +51,21 @@ const NativeHttp = window.NativeHttp = {
   }
 };
 
-async function apiJson(url){
-  const text = await NativeHttp.request(url);
-  try{return JSON.parse(text);}catch(e){throw new Error('Ungültige Antwort der Datenquelle.');}
+const jsonRequests=new Map();
+let geocodeQueue=Promise.resolve(),nextGeocodeAt=0;
+
+async function apiJson(url) {
+  if(jsonRequests.has(url))return jsonRequests.get(url);
+  const task=(async()=>{
+    let hostname='Datenquelle';try{hostname=new URL(url).hostname;}catch(e){}
+    try {
+      const text=await NativeHttp.request(url);let data;
+      try{data=JSON.parse(text);}catch(e){throw new Error('Ungültige Antwort der Datenquelle.');}
+      if(state?.cache){state.cache.sourceStatus=state.cache.sourceStatus||{};state.cache.sourceStatus[hostname]={status:'ok',checkedAt:Date.now()};}
+      return data;
+    }catch(e){if(state?.cache){state.cache.sourceStatus=state.cache.sourceStatus||{};state.cache.sourceStatus[hostname]={status:'error',checkedAt:Date.now(),message:e.message};}throw e;}
+  })();
+  jsonRequests.set(url,task);try{return await task;}finally{jsonRequests.delete(url);}
 }
 
 function toast(msg){
@@ -60,9 +75,9 @@ function toast(msg){
 }
 function fmtDate(iso){ if(!iso) return '–'; const d=new Date(`${iso}T12:00:00`); return d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'}); }
 function fmtShortDate(iso){ if(!iso) return '–'; const d=new Date(`${iso}T12:00:00`); return d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'}); }
-function addDays(iso,n){const d=new Date(`${iso}T12:00:00`);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
-function daysBetween(a,b){ if(!a||!b)return 0; return Math.floor((new Date(`${b}T12:00:00`)-new Date(`${a}T12:00:00`))/86400000)+1; }
-function timeToMin(t){if(!t)return null;const [h,m]=t.split(':').map(Number);return h*60+m}
+function addDays(iso,n){return Planner.addDays(iso,n);}
+function daysBetween(a,b){return Planner.dayCount(a,b);}
+function timeToMin(t){return Planner.minutes(t);}
 function minToTime(m){if(m==null||!Number.isFinite(m))return'–';m=((Math.round(m)%1440)+1440)%1440;return`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`}
 function durText(min){min=Math.max(0,Math.round(min||0));const h=Math.floor(min/60),m=min%60;return h?`${h} h ${m?m+' min':''}`.trim():`${m} min`}
 function kmText(km){return km==null?'–':`${Number(km).toLocaleString('de-DE',{maximumFractionDigits:0})} km`}
@@ -70,7 +85,7 @@ function haversine(a,b){const R=6371,rad=x=>x*Math.PI/180;const dLat=rad(b.lat-a
 function normalizeName(x){return String(x||'').trim().toLowerCase();}
 
 function defaultSettings(){return {defaultStart:'08:00',defaultEnd:'20:00',arrivalBuffer:60,departureBuffer:120};}
-function emptyState(){return {schema:5,activeTripId:null,settings:defaultSettings(),trips:[],cache:{places:{},cities:{},wikidata:{},wildlife:{},photos:{}}};}
+function emptyState(){return {schema:6,activeTripId:null,settings:defaultSettings(),trips:[],cache:{places:{},cities:{},wikidata:{},wildlife:{},photos:{}}};}
 
 function sampleTrip(){
   const start='2027-04-10';
@@ -102,18 +117,43 @@ function loadState(){
   try{ if(window.AndroidBridge?.loadState) raw=AndroidBridge.loadState(); else raw=localStorage.getItem('urp_state')||''; }catch(e){}
   if(raw){ try{state=JSON.parse(raw);}catch(e){state=null;} }
   if(!state||!state.trips){state=emptyState(); const t=sampleTrip(); state.trips.push(t); state.activeTripId=t.id;}
+  state=normalizeLoadedState(state);
+}
+function normalizeLoadedState(candidate) {
+  if(!candidate||!Array.isArray(candidate.trips))throw new Error('Ungültiges Backup: Reisen fehlen.');
+  const state=JSON.parse(JSON.stringify(candidate));
+  for(const trip of state.trips){
+    if(!Array.isArray(trip.versions))throw new Error('Ungültiges Backup: Versionen fehlen.');
+    for(const version of trip.versions){
+      if(!Array.isArray(version.days)||version.days.some(day=>!Array.isArray(day.stops)))throw new Error('Ungültiges Backup: Tagesplan fehlt.');
+      version.flights=version.flights||[];version.connections=version.connections||[];version.transfers=version.transfers||[];
+    }
+  }
   const oldSchema=+state.schema||0;
   state.settings={...defaultSettings(),...(state.settings||{})}; state.cache=state.cache||{};state.cache.places=state.cache.places||{};state.cache.cities=state.cache.cities||{};state.cache.wikidata=state.cache.wikidata||{};state.cache.wildlife=state.cache.wildlife||{};state.cache.photos=state.cache.photos||{};
   if(oldSchema<4){
     state.cache.photos={};
-    for(const k of Object.keys(state.cache.cities))if(!k.startsWith('cities:v5:'))delete state.cache.cities[k];
+    for(const k of Object.keys(state.cache.cities))if(!k.startsWith('cities:v6:'))delete state.cache.cities[k];
     for(const k of Object.keys(state.cache.wikidata))if(k.startsWith('attr:v3:')||k.startsWith('place:'))delete state.cache.wikidata[k];
   }
-  for(const t of state.trips||[]){t.wishlist=t.wishlist||[];if(oldSchema<5&&Array.isArray(t.targetSpecies)){for(const sp of t.targetSpecies){const key=`wildlife:${sp.taxonId||normalizeName(sp.name)}`;if(!t.wishlist.some(x=>x.key===key))t.wishlist.push({key,kind:'wildlife',priority:'high',name:sp.name||sp.scientific||'Wildlife',lat:null,lng:null,item:{...sp},selectedAt:Date.now()});}}for(const v of t.versions||[]){v.transfers=v.transfers||[];v.connections=v.connections||[];for(const tr of v.transfers){if(!tr.sourceRef&&tr.flightId)tr.sourceRef=`flight:${tr.flightId}`;}}}state.schema=5;
+  for(const t of state.trips||[]){t.wishlist=t.wishlist||[];if(oldSchema<5&&Array.isArray(t.targetSpecies)){for(const sp of t.targetSpecies){const key=`wildlife:${sp.taxonId||normalizeName(sp.name)}`;if(!t.wishlist.some(x=>x.key===key))t.wishlist.push({key,kind:'wildlife',priority:'high',name:sp.name||sp.scientific||'Wildlife',lat:null,lng:null,item:{...sp},selectedAt:Date.now()});}}for(const v of t.versions||[]){v.transfers=v.transfers||[];v.connections=v.connections||[];for(const tr of v.transfers){if(!tr.sourceRef&&tr.flightId)tr.sourceRef=`flight:${tr.flightId}`;}}}
+  if(oldSchema<6) {
+    // Repair only the known 1.2.0 automatic null-to-zero conversion.
+    for(const t of state.trips) {
+      for(const x of t.wishlist||[])if(x.kind==='wildlife'&&!Planner.hasLocation(x.item?.hotspot)&&!Planner.hasLocation(x.item)){x.lat=null;x.lng=null;}
+      for(const v of t.versions||[])for(const day of v.days||[])for(const stop of day.stops||[]) {
+        if(v.routeMeta?.source==='wishlist'&&stop.type==='wildlife'&&stop.lat===0&&stop.lng===0){stop.lat=null;stop.lng=null;stop.openIssues=[...(stop.openIssues||[]),'Standort aus Version 1.2.0 erneut prüfen'];}
+      }
+    }
+    state.cache.wildlife={};
+  }
+  state.schema=6;
+  return state;
 }
+
 function persistSoon(){
   $('#syncState').textContent='speichert …'; clearTimeout(saveTimer); saveTimer=setTimeout(()=>{
-    try{const raw=JSON.stringify(state); if(window.AndroidBridge?.saveState) AndroidBridge.saveState(raw); else localStorage.setItem('urp_state',raw); $('#syncState').textContent='lokal gespeichert';}catch(e){$('#syncState').textContent='Speicherfehler';}
+    try{const raw=JSON.stringify(state); if(window.AndroidBridge?.saveState){if(AndroidBridge.saveState(raw)===false)throw new Error('Speichern fehlgeschlagen');}else localStorage.setItem('urp_state',raw); $('#syncState').textContent='lokal gespeichert';}catch(e){$('#syncState').textContent='Speicherfehler';}
   },250);
 }
 function activeTrip(){return state.trips.find(t=>t.id===state.activeTripId)||state.trips[0]||null}
@@ -122,8 +162,8 @@ function ensureActive(){if(!activeTrip()&&state.trips.length)state.activeTripId=
 
 function cloneVersion(v,newName){const c=JSON.parse(JSON.stringify(v));c.id=uid('ver');c.name=newName||`${v.name} – Kopie`;c.createdAt=Date.now();const stopMap=new Map(),flightMap=new Map(),connectionMap=new Map();c.days.forEach(d=>{d.id=uid('day');d.stops.forEach(s=>{const old=s.id;s.id=uid('stop');stopMap.set(old,s.id)});});(c.flights||[]).forEach(f=>{const old=f.id;f.id=uid('flight');flightMap.set(old,f.id)});(c.connections||[]).forEach(x=>{const old=x.id;x.id=uid('conn');connectionMap.set(old,x.id)});c.transfers=(c.transfers||[]).map(x=>({...x,id:uid('transfer'),flightId:flightMap.get(x.flightId)||x.flightId,sourceRef:(x.sourceRef|| (x.flightId?`flight:${x.flightId}`:'' )).replace(/^flight:(.+)$/,(m,id)=>`flight:${flightMap.get(id)||id}`).replace(/^connection:(.+)$/,(m,id)=>`connection:${connectionMap.get(id)||id}`),toStopId:stopMap.get(x.toStopId)||x.toStopId}));return c}
 
-function showModal(html,onReady){$('#modalContent').innerHTML=html;$('#modal').classList.remove('hidden');if(onReady)setTimeout(onReady,0)}
-function closeModal(){$('#modal').classList.add('hidden');$('#modalContent').innerHTML=''}
+function showModal(html,onReady){const generation=++modalGeneration;$('#modalContent').innerHTML=html;$('#modal').classList.remove('hidden');if(onReady)setTimeout(()=>{if(generation===modalGeneration)onReady();},0);}
+function closeModal(){modalGeneration++;$('#modal').classList.add('hidden');$('#modalContent').innerHTML=''}
 
 // ------------------------- Free data providers -------------------------
 const OVERPASS_ENDPOINTS=[
@@ -144,12 +184,24 @@ function inBBox(lat,lng,bbox,margin=.15){if(!bbox||bbox.length!==4)return true;c
 function cleanWikiFileTitle(s){return String(s||'').replace(/^File:/i,'')}
 function isUsefulPhotoTitle(s){return !/(?:logo|icon|pictogram|locator|location map|route map|map of|flag of|coat of arms|crest|seal|wordmark|wikidata|commons-logo|symbol|diagram|floor plan|site plan|\.svg$)/i.test(String(s||''))}
 
+
+function publicWildObservation(observation) {
+  const point={lat:observation.geojson?.coordinates?.[1],lng:observation.geojson?.coordinates?.[0]};
+  return Planner.hasLocation(point)&&!observation.captive&&!observation.captive_cultivated&&!observation.obscured&&!['obscured','private'].includes(observation.geoprivacy)&&!['obscured','private'].includes(observation.taxon_geoprivacy)&&(!observation.positional_accuracy||observation.positional_accuracy<=1000);
+}
 const Providers={
-  async geocode(q,limit=8){
-    const key=`geo:v2:${normalizeName(q)}`; if(state.cache.places[key])return state.cache.places[key];
-    const u=`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&limit=${limit}&q=${encodeURIComponent(q)}`;
-    const j=await apiJson(u); const out=j.map(x=>({name:x.namedetails?.name||x.display_name.split(',')[0],display:x.display_name,lat:+x.lat,lng:+x.lon,type:x.type,category:x.category,address:x.address||{},extratags:x.extratags||{},bbox:x.boundingbox?.map(Number)}));
-    state.cache.places[key]=out;persistSoon();return out;
+  async geocode(q,limit=8) {
+    const key=`geo:v3:${normalizeName(q)}:${limit}`;if(state.cache.places[key])return state.cache.places[key];
+    const run=geocodeQueue.then(async()=>{
+      if(state.cache.places[key])return state.cache.places[key];
+      const delay=Math.max(0,nextGeocodeAt-Date.now());if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
+      nextGeocodeAt=Date.now()+1100;
+      const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&accept-language=de,en&limit=${limit}&q=${encodeURIComponent(q)}`;
+      const data=await apiJson(url);if(!Array.isArray(data))throw new Error('Ungültige Ortssuche.');
+      const result=data.map(x=>({name:x.namedetails?.name||x.display_name?.split(',')[0]||'',names:x.namedetails||{},display:x.display_name||'',lat:Planner.coordinate(x.lat,90),lng:Planner.coordinate(x.lon,180),type:x.type,category:x.category,addressType:x.addresstype,address:x.address||{},extratags:x.extratags||{},osmId:x.osm_id,osmType:x.osm_type,bbox:x.boundingbox?.map(Number),source:'Nominatim',retrievedAt:Date.now()})).filter(Planner.hasLocation);
+      state.cache.places[key]=result;persistSoon();return result;
+    });
+    geocodeQueue=run.catch(()=>{});return run;
   },
   async overpassJson(query){
     const errors=[];
@@ -158,15 +210,21 @@ const Providers={
     }
     throw new Error(`OpenStreetMap/Overpass ist vorübergehend nicht erreichbar. ${errors.slice(-1)[0]||''}`.trim());
   },
-  async cities(destination){
-    const key=`cities:v5:${normalizeName(destination)}`,cached=state.cache.cities[key];if(Array.isArray(cached)&&cached.length)return cached;
-    const geo=await this.geocode(destination,3),g=geo[0];if(!g?.bbox?.length)throw new Error('Landesgrenzen konnten nicht bestimmt werden.');
-    const[south,north,west,east]=g.bbox;
-    const q=`[out:json][timeout:14];nwr[place=city][name](${south},${west},${north},${east});out tags center 160;`;
-    const j=await this.overpassJson(q),out=[];
-    for(const e of j.elements||[]){const t=e.tags||{},lat=e.lat??e.center?.lat,lng=e.lon??e.center?.lon,name=t['name:de']||t.name||'';if(!name||!Number.isFinite(+lat)||!Number.isFinite(+lng)||!inBBox(+lat,+lng,g.bbox,0))continue;out.push({name,lat:+lat,lng:+lng,population:+String(t.population||'0').replace(/[^0-9]/g,''),capital:t.capital||'',country:destination,wikiTag:t.wikipedia||'',wikidata:t.wikidata||'',photo:'',summary:'',tags:t});}
-    const uniq=new Map();out.sort((a,b)=>(b.population||0)-(a.population||0)||Number(Boolean(b.capital))-Number(Boolean(a.capital))).forEach(x=>{if(!uniq.has(normalizeName(x.name)))uniq.set(normalizeName(x.name),x)});
-    const result=[...uniq.values()].slice(0,30);if(!result.length)throw new Error('Keine eindeutig als Stadt markierten OpenStreetMap-Orte gefunden.');
+  async cities(destination) {
+    const key=`cities:v6:${normalizeName(destination)}`,cached=state.cache.cities[key];if(cached?.length)return cached;
+    const [g]=await this.geocode(destination,3);
+    const area=g?.osmType==='relation'?3600000000+Number(g.osmId):g?.osmType==='way'?2400000000+Number(g.osmId):null;
+    if(!area)throw new Error('Für das Reiseziel wurde keine eindeutige Gebietsgrenze gefunden.');
+    const query=`[out:json][timeout:20];area(${area})->.region;nwr(area.region)[place=city][name];out tags center 160;`;
+    const j=await this.overpassJson(query),unique=new Map();
+    for(const e of j.elements||[]) {
+      const tags=e.tags||{},lat=Planner.coordinate(e.lat??e.center?.lat,90),lng=Planner.coordinate(e.lon??e.center?.lon,180),name=tags['name:de']||tags.name;
+      if(!name||lat===null||lng===null)continue;
+      const item={name,lat,lng,population:+String(tags.population||'0').replace(/[^0-9]/g,''),capital:tags.capital||'',country:destination,wikiTag:tags.wikipedia||'',wikidata:tags.wikidata||'',photo:'',summary:'',tags,source:'OpenStreetMap',sourceId:`${e.type}/${e.id}`,retrievedAt:Date.now()};
+      const id=item.wikidata||`${name}:${lat.toFixed(3)}:${lng.toFixed(3)}`;if(!unique.has(id))unique.set(id,item);
+    }
+    const result=[...unique.values()].sort((a,b)=>b.population-a.population).slice(0,30);
+    if(!result.length)throw new Error('Keine Städte innerhalb der gewählten Gebietsgrenze gefunden.');
     state.cache.cities[key]=result;persistSoon();return result;
   },
   async countryQid(country){
@@ -175,53 +233,89 @@ const Providers={
     const j=await apiJson(u); const item=(j.search||[]).find(x=>/Land|country|Staat/i.test(`${x.description||''}`))||(j.search||[])[0];
     const q=item?.id||'';state.cache.wikidata[k]=q;persistSoon();return q;
   },
-  async attractions(destination){
-    const cacheKey=`attr:v5:${normalizeName(destination)}`,cached=state.cache.wikidata[cacheKey];if(Array.isArray(cached)&&cached.length)return cached;
-    const geo=await this.geocode(destination,3),countryGeo=geo[0],cityKey=`cities:v5:${normalizeName(destination)}`;
-    let cities=state.cache.cities[cityKey]||[];if(!cities.length){try{cities=await this.cities(destination)}catch(e){cities=[]}}
-    const cityNames=new Set(cities.map(x=>normalizeName(x.name)));
-    const searches=[
-      {q:`${destination} Wahrzeichen`,weight:34,label:'Wahrzeichen'},{q:`${destination} UNESCO Welterbe`,weight:38,label:'UNESCO / Welterbe'},
-      {q:`${destination} Nationalpark`,weight:34,label:'Nationalpark'},{q:`${destination} Naturwunder`,weight:32,label:'Naturhighlight'},
-      {q:`${destination} Sehenswürdigkeit`,weight:24,label:'Sehenswürdigkeit'},{q:`${destination} Denkmal`,weight:22,label:'Denkmal'},
-      {q:`${destination} historische Stätte`,weight:22,label:'Historische Stätte'}
-    ];
-    const seen=new Set(),out=[];let lastError=null;
-    const settlementRx=/(?:^|:|\s)(?:Stadt in|Ort in|Gemeinde in|Großstadt|Millionenstadt|Kleinstadt|Hauptstadt|Vorort|Stadtteil|Stadtbezirk|Siedlung|City in|Cities in|Town in|Towns in|Village in|Villages in|Suburb)/i;
-    const adminRx=/(?:Bundesstaat|Provinz|Territorium|Verwaltungseinheit|Region von|Region in|County|District|State of)/i;
-    const usefulRx=/(?:Welterbe|World Heritage|Nationalpark|National Park|Wahrzeichen|Landmark|Naturdenkmal|Naturwunder|Denkmal|Monument|Museum|Bauwerk|Gebäude|Kirche|Kathedrale|Tempel|Schloss|Burg|Brücke|Straße|Küste|Riff|Insel|Berg|Fels|Schlucht|Wasserfall|Höhle|Park|Garten|Historic|Tourist|Sehenswürdigkeit)/i;
-    for(const spec of searches){
-      try{
-        const u=`https://de.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(spec.q)}&gsrnamespace=0&gsrlimit=18&prop=coordinates|pageimages|info|categories|extracts&piprop=thumbnail&pithumbsize=600&inprop=url&cllimit=max&exintro=1&explaintext=1&exchars=420&format=json&formatversion=2&origin=*`;
-        const j=await apiJson(u);let rank=0;
-        for(const page of j.query?.pages||[]){rank++;const name=page.title||'',norm=normalizeName(name);if(!name||seen.has(norm)||norm===normalizeName(destination))continue;const c=page.coordinates?.[0];if(!c||!Number.isFinite(+c.lat)||!Number.isFinite(+c.lon)||!inBBox(+c.lat,+c.lon,countryGeo?.bbox,0.04))continue;if(cityNames.has(norm))continue;if(/^(Liste|Tourismus in|Geographie von|Geschichte von|Verwaltungsgliederung|Demografie|Politik von)\b/i.test(name))continue;const cats=(page.categories||[]).map(x=>x.title||'').join(' · '),extract=page.extract||'';if(settlementRx.test(cats)||adminRx.test(cats)||/\b(?:ist die Hauptstadt|ist eine Stadt|ist eine Gemeinde|city and capital|city in)\b/i.test(extract))continue;let score=spec.weight+(20-rank);if(/Welterbe|World Heritage/i.test(cats+extract))score+=30;if(/Nationalpark|National Park/i.test(cats+name))score+=25;if(/Wahrzeichen|Landmark|Naturwunder|Naturdenkmal/i.test(cats+extract))score+=20;if(usefulRx.test(cats+extract+name))score+=10;if(page.thumbnail?.source)score+=4;seen.add(norm);out.push({name,lat:+c.lat,lng:+c.lon,wiki:page.fullurl||'',photo:page.thumbnail?.source||'',photoVerified:true,score,highlightType:spec.label,summary:extract.slice(0,260),source:'Wikipedia'});}
-      }catch(e){lastError=e}
+  async attractions(destination) {
+    const key=`attr:v6:${normalizeName(destination)}`,cached=state.cache.wikidata[key];if(cached?.length)return cached;
+    const [region]=await this.geocode(destination,3),countryId=region?.extratags?.wikidata;
+    if(!/^Q\d+$/.test(countryId||''))throw new Error('Das Reiseland konnte nicht eindeutig einer Wissensdaten-ID zugeordnet werden.');
+    const candidates=new Map(),highlight=/(nationalpark|national park|natur|natural|landschaft|landscape|riff|reef|insel|island|berg|mountain|fels|rock|schlucht|canyon|gorge|wasserfall|waterfall|höhle|cave|küste|coast|strand|beach|wüste|desert|see\b|lake|forest|wald|welterbe|world heritage|wahrzeichen|landmark|denkmal|monument|museum|bauwerk|gebäude|kirche|kathedrale|tempel|schloss|burg|brücke|straße|garten|historic|sehenswürdigkeit)/i;
+    const searches=[['Wahrzeichen',34],['UNESCO Welterbe',38],['Nationalpark',34],['Naturwunder',32],['Sehenswürdigkeit',24],['Denkmal',22],['historische Stätte',22]];
+    let lastError=null;
+    for(const [topic,weight] of searches) {
+      const lang='de',query=destination+' '+topic;
+      const url=`https://${lang}.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=0&gsrlimit=30&prop=coordinates|pageimages|info|categories|extracts|pageprops&ppprop=wikibase_item&piprop=thumbnail&pithumbsize=600&inprop=url&cllimit=max&exintro=1&explaintext=1&exchars=420&format=json&formatversion=2&origin=*`;
+      let j;try{j=await apiJson(url);}catch(e){lastError=e;continue;}
+      let rank=0;
+      for(const page of j.query?.pages||[]) {
+        rank++;
+        const coordinate=page.coordinates?.[0],qid=page.pageprops?.wikibase_item,name=page.title||'',cats=(page.categories||[]).map(x=>x.title||'').join(' '),summary=page.extract||'';
+        if(!/^Q\d+$/.test(qid||'')||!Planner.hasLocation({lat:coordinate?.lat,lng:coordinate?.lon})||!highlight.test(name+' '+cats+' '+summary))continue;
+        if(/^(Liste|Geographie|Geschichte|Tourismus|Verwaltungsgliederung|Demografie|Politik)\b/i.test(name)||/(?:Kategorie:)(?:Stadt|Gemeinde|Ort|Großstadt|Millionenstadt|Kleinstadt|Hauptstadt|Vorort|Stadtteil|Stadtbezirk|Siedlung|Bundesstaat|Provinz|Territorium|Verwaltungseinheit|Staat|County|District)\b/i.test(cats)||/\bist (?:eine?|die) (?:Stadt|Gemeinde|Hauptstadt|Bundesstaat|Provinz|Territorium)\b/i.test(summary))continue;
+        if(!inBBox(+coordinate.lat,+coordinate.lon,region.bbox,0))continue;
+        const text=name+' '+cats+' '+summary,score=weight+Math.max(0,30-rank)+(/welterbe|world heritage/i.test(text)?30:0)+(/nationalpark|national park/i.test(text)?25:0)+(/wahrzeichen|landmark|naturwunder|naturdenkmal/i.test(text)?20:0);
+        if(candidates.has(qid)&&candidates.get(qid).score>=score)continue;
+        candidates.set(qid,{name,lat:+coordinate.lat,lng:+coordinate.lon,wikidata:qid,wiki:page.fullurl||'',photo:page.thumbnail?.source||'',photoVerified:true,score,highlightType:topic,summary:summary.slice(0,260),source:'Wikipedia / Wikidata',retrievedAt:Date.now()});
+      }
     }
-    const uniq=new Map();for(const x of out){const k=normalizeName(x.name),old=uniq.get(k);if(!old||x.score>old.score)uniq.set(k,x)}
-    const result=[...uniq.values()].sort((a,b)=>b.score-a.score).slice(0,40);if(!result.length)throw new Error(`Konkrete nationale Sehenswürdigkeiten konnten nicht geladen werden${lastError?`: ${lastError.message}`:''}`);
-    state.cache.wikidata[cacheKey]=result;persistSoon();return result;
+    const entries=[...candidates.values()],result=[];
+    for(let i=0;i<entries.length;i+=40) {
+      const chunk=entries.slice(i,i+40);let j;
+      try{j=await apiJson(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(chunk.map(x=>x.wikidata).join('|'))}&props=claims&format=json&origin=*`);}catch(e){lastError=e;continue;}
+      for(const item of chunk) {
+        const countries=(j.entities?.[item.wikidata]?.claims?.P17||[]).map(x=>x.mainsnak?.datavalue?.value?.id);
+        if(countries.includes(countryId))result.push(item);
+      }
+    }
+    result.sort((a,b)=>b.score-a.score);if(!result.length)throw new Error(`Keine eindeutig dem Reiseland zugeordneten nationalen Highlights gefunden.${lastError?' '+lastError.message:''}`);
+    state.cache.wikidata[key]=result.slice(0,40);persistSoon();return state.cache.wikidata[key];
   },
-  async iNatPlace(destination){const u=`https://api.inaturalist.org/v1/places/autocomplete?q=${encodeURIComponent(destination)}&per_page=10`;const j=await apiJson(u);return (j.results||[])[0]||null;},
-  async wildlife(destination,month){
-    const key=`wild:v2:${normalizeName(destination)}:${month||0}`,cached=state.cache.wildlife[key];if(Array.isArray(cached)&&cached.length)return cached;let j=null,lastError=null;
-    try{const geo=await this.geocode(destination,3),g=geo[0];if(g?.bbox?.length===4){const[south,north,west,east]=g.bbox;let u=`https://api.inaturalist.org/v1/observations/species_counts?taxon_id=40151&quality_grade=research,needs_id&per_page=50&locale=de&swlat=${south}&swlng=${west}&nelat=${north}&nelng=${east}`;if(month)u+=`&month=${month}`;j=await apiJson(u)}}catch(e){lastError=e}
-    if(!j){try{const place=await this.iNatPlace(destination);if(!place)throw new Error('Gebiet wurde bei iNaturalist nicht gefunden.');let u=`https://api.inaturalist.org/v1/observations/species_counts?place_id=${place.id}&taxon_id=40151&quality_grade=research,needs_id&per_page=50&locale=de`;if(month)u+=`&month=${month}`;j=await apiJson(u)}catch(e){lastError=e}}
-    if(!j)throw new Error(`Wildlife konnte nicht geladen werden${lastError?`: ${lastError.message}`:''}`);const out=(j.results||[]).map(x=>({taxonId:x.taxon?.id,name:x.taxon?.preferred_common_name||x.taxon?.english_common_name||x.taxon?.name||'Unbekannt',scientific:x.taxon?.name||'',count:x.count||0,photo:x.taxon?.default_photo?.medium_url||x.taxon?.default_photo?.square_url||'',photoVerified:true,iconic:x.taxon?.iconic_taxon_name||'',source:'iNaturalist'}));if(!out.length)throw new Error('Für dieses Ziel und den gewählten Reisemonat wurden keine passenden Säugetier-Beobachtungen gefunden.');state.cache.wildlife[key]=out;persistSoon();return out;
+  async iNatPlace(destination) {
+    const key=`inatplace:v2:${normalizeName(destination)}`,cached=state.cache.places[key];if(cached)return cached;
+    const [geo]=await this.geocode(destination,3);if(!geo)return null;
+    const aliases=[destination,geo.name,geo.names?.['name:en'],geo.names?.['name:de'],geo.names?.name].filter(Boolean).map(matchNormalize);
+    const name=geo.names?.['name:en']||geo.name||destination;
+    const j=await apiJson(`https://api.inaturalist.org/v1/places/autocomplete?q=${encodeURIComponent(name)}&per_page=20`);
+    const candidates=(j.results||[]).filter(x=>aliases.includes(matchNormalize(x.name))||aliases.includes(matchNormalize(x.display_name)));
+    const item=geo.addressType==='country'?candidates.find(x=>x.place_type===12):candidates.length===1?candidates[0]:null;
+    if(item){state.cache.places[key]=item;persistSoon();}return item||null;
   },
-  async wildlifeObservations(taxonId,lat,lng,radius=80,month=0){let u=`https://api.inaturalist.org/v1/observations?taxon_id=${taxonId}&lat=${lat}&lng=${lng}&radius=${radius}&quality_grade=research,needs_id&geo=true&per_page=100&order=desc&order_by=observed_on`;if(month)u+=`&month=${month}`;const j=await apiJson(u);return j.results||[];},
-  async wildlifeBestHotspot(taxonId,destination,month=0){
-    const key=`wildhot:v1:${taxonId}:${normalizeName(destination)}:${month}`,cached=state.cache.wildlife[key];if(cached)return cached;
-    const geo=await this.geocode(destination,3),g=geo[0];if(!g?.bbox?.length)throw new Error('Gebietsgrenzen konnten nicht bestimmt werden.');
-    const[south,north,west,east]=g.bbox;let u=`https://api.inaturalist.org/v1/observations?taxon_id=${taxonId}&quality_grade=research,needs_id&geo=true&per_page=200&order=desc&order_by=observed_on&swlat=${south}&swlng=${west}&nelat=${north}&nelng=${east}`;if(month)u+=`&month=${month}`;
-    const j=await apiJson(u),pts=(j.results||[]).map(o=>({lat:o.geojson?.coordinates?.[1],lng:o.geojson?.coordinates?.[0],place:o.place_guess||'',date:o.observed_on||''})).filter(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng));
-    if(!pts.length)return null;const clusters=clusterPoints(pts,30),best=clusters[0];if(!best)return null;const out={lat:best.lat,lng:best.lng,count:best.points.length,place:best.points.find(x=>x.place)?.place||'',sampleDate:best.points[0]?.date||''};state.cache.wildlife[key]=out;persistSoon();return out;
+  async wildlife(destination,month) {
+    const key=`wild:v3:${normalizeName(destination)}:${month||0}`,cached=state.cache.wildlife[key];if(cached?.length)return cached;
+    const place=await this.iNatPlace(destination);if(!place)throw new Error('Das Reiseland konnte bei iNaturalist nicht eindeutig zugeordnet werden.');
+    let url=`https://api.inaturalist.org/v1/observations/species_counts?place_id=${place.id}&taxon_id=40151&captive=false&quality_grade=research&per_page=50&locale=de`;
+    if(month)url+=`&month=${month}`;
+    const j=await apiJson(url),result=(j.results||[]).filter(x=>x.taxon?.id).map(x=>({taxonId:x.taxon.id,name:x.taxon.preferred_common_name||x.taxon.english_common_name||x.taxon.name,scientific:x.taxon.name||'',count:x.count||0,photo:x.taxon.default_photo?.medium_url||x.taxon.default_photo?.square_url||'',photoAttribution:x.taxon.default_photo?.attribution||'',photoLicense:x.taxon.default_photo?.license_code||'',photoVerified:true,iconic:x.taxon.iconic_taxon_name||'',source:'iNaturalist',placeId:place.id,retrievedAt:Date.now()}));
+    if(!result.length)throw new Error('Keine passenden wildlebenden Säugetiere im Reiseland und Reisemonat gefunden.');
+    state.cache.wildlife[key]=result;persistSoon();return result;
   },
-  async wildlifeTaxonPhotos(item,destination,month=0){
-    const key=`inatphoto:v2:${item.taxonId}:${normalizeName(destination)}:${month}`,cached=state.cache.photos[key];if(Array.isArray(cached)&&cached.length)return cached;
-    const urls=[];const add=u=>{if(!u||urls.some(x=>x.url===u))return;urls.push({url:u,full:u,title:item.name,page:`https://www.inaturalist.org/taxa/${item.taxonId}`,verified:true})};add(item.photo);
-    try{const geo=await this.geocode(destination,3),g=geo[0];if(g?.bbox?.length===4){const[south,north,west,east]=g.bbox;let u=`https://api.inaturalist.org/v1/observations?taxon_id=${item.taxonId}&quality_grade=research,needs_id&has[]=photos&per_page=30&order_by=votes&order=desc&swlat=${south}&swlng=${west}&nelat=${north}&nelng=${east}`;if(month)u+=`&month=${month}`;const j=await apiJson(u);for(const o of j.results||[])for(const p of o.photos||[]){const src=(p.url||'').replace('/square.','/medium.');add(src);if(urls.length>=4)break} }
+  async wildlifeObservations(taxonId,lat,lng,radius=80,month=0) {
+    let url=`https://api.inaturalist.org/v1/observations?taxon_id=${taxonId}&lat=${lat}&lng=${lng}&radius=${radius}&quality_grade=research&captive=false&geo=true&geoprivacy=open&taxon_geoprivacy=open&per_page=100&order=desc&order_by=observed_on`;
+    if(month)url+=`&month=${month}`;const j=await apiJson(url);return (j.results||[]).filter(publicWildObservation);
+  },
+  async wildlifeBestHotspot(taxonId,destination,month=0) {
+    const key=`wildhot:v2:${taxonId}:${normalizeName(destination)}:${month}`,cached=state.cache.wildlife[key];if(cached&&Date.now()-cached.retrievedAt<86400000)return cached;
+    const place=await this.iNatPlace(destination);if(!place)throw new Error('Kein eindeutiges iNaturalist-Gebiet gefunden.');
+    let url=`https://api.inaturalist.org/v1/observations?taxon_id=${taxonId}&place_id=${place.id}&quality_grade=research&captive=false&geo=true&geoprivacy=open&taxon_geoprivacy=open&per_page=200&order=desc&order_by=observed_on`;
+    if(month)url+=`&month=${month}`;
+    const j=await apiJson(url),pts=(j.results||[]).filter(publicWildObservation).map(o=>({lat:o.geojson.coordinates[1],lng:o.geojson.coordinates[0],place:o.place_guess||'',date:o.observed_on||'',observationId:o.id}));
+    if(!pts.length)return null;
+    const best=clusterPoints(pts,30)[0];
+    // Use an actual public observation, not an average that could land offshore.
+    const anchor=[...best.points].sort((a,b)=>haversine(a,best)-haversine(b,best))[0];
+    const out={lat:anchor.lat,lng:anchor.lng,count:best.points.length,place:anchor.place,sampleDate:anchor.date,sourceUrl:`https://www.inaturalist.org/observations/${anchor.observationId}`,placeId:place.id,retrievedAt:Date.now()};
+    state.cache.wildlife[key]=out;persistSoon();return out;
+  },
+  async wildlifeTaxonPhotos(item,destination,month=0) {
+    const key=`inatphoto:v3:${item.taxonId}:${normalizeName(destination)}:${month}`,cached=state.cache.photos[key];if(cached?.length)return cached;
+    const result=[],add=(url,attribution='',license='',page='')=>{if(url&&!result.some(p=>p.url===url))result.push({url,full:url,title:item.name,page:page||`https://www.inaturalist.org/taxa/${item.taxonId}`,attribution,license,verified:true});};
+    add(item.photo,item.photoAttribution,item.photoLicense);
+    try {
+      const place=await this.iNatPlace(destination);if(!place)throw new Error('Kein eindeutig zugeordnetes Gebiet');
+      let url=`https://api.inaturalist.org/v1/observations?taxon_id=${item.taxonId}&place_id=${place.id}&quality_grade=research&captive=false&has[]=photos&per_page=30&order_by=votes&order=desc`;
+      if(month)url+=`&month=${month}`;
+      const data=await apiJson(url);
+      for(const observation of data.results||[])for(const photo of observation.photos||[]){add((photo.url||'').replace('/square.','/medium.'),photo.attribution||'',photo.license_code||'',`https://www.inaturalist.org/observations/${observation.id}`);if(result.length>=4)break;}
     }catch(e){}
-    const out=urls.slice(0,4);state.cache.photos[key]=out;persistSoon();return out;
+    const output=result.slice(0,4);if(output.length){state.cache.photos[key]=output;persistSoon();}return output;
   },
   async wikiEntity(qid){
     const k=`wd:v2:${qid}`,cached=state.cache.wikidata[k];if(cached)return cached;
@@ -229,8 +323,8 @@ const Providers={
   },
   async wikiPageExact(ref){
     if(!ref?.lang||!ref?.title)return null;const key=`wikipage:v2:${ref.lang}:${normalizeName(ref.title)}`,cached=state.cache.wikidata[key];if(cached)return cached;
-    const api=`https://${ref.lang}.wikipedia.org/w/api.php`,u=`${api}?action=query&redirects=1&titles=${encodeURIComponent(ref.title)}&prop=coordinates|pageimages|info|extracts|images&piprop=thumbnail&pithumbsize=900&inprop=url&exintro=1&explaintext=1&exchars=650&imlimit=40&format=json&formatversion=2&origin=*`;
-    const j=await apiJson(u),p=(j.query?.pages||[])[0];if(!p||p.missing)return null;const c=p.coordinates?.[0],out={title:p.title||ref.title,summary:(p.extract||'').trim(),photo:p.thumbnail?.source||'',wiki:p.fullurl||`https://${ref.lang}.wikipedia.org/wiki/${encodeURIComponent(p.title||ref.title)}`,lat:c?+c.lat:null,lng:c?+c.lon:null,ref:{lang:ref.lang,title:p.title||ref.title},imageTitles:(p.images||[]).map(x=>x.title).filter(Boolean),verified:true,source:'Wikipedia'};state.cache.wikidata[key]=out;persistSoon();return out;
+    const api=`https://${ref.lang}.wikipedia.org/w/api.php`,u=`${api}?action=query&redirects=1&titles=${encodeURIComponent(ref.title)}&prop=coordinates|pageimages|info|extracts|images|pageprops&ppprop=wikibase_item&piprop=thumbnail&pithumbsize=900&inprop=url&exintro=1&explaintext=1&exchars=650&imlimit=40&format=json&formatversion=2&origin=*`;
+    const j=await apiJson(u),p=(j.query?.pages||[])[0];if(!p||p.missing)return null;const c=p.coordinates?.[0],out={title:p.title||ref.title,wikidata:p.pageprops?.wikibase_item||'',summary:(p.extract||'').trim(),photo:p.thumbnail?.source||'',wiki:p.fullurl||`https://${ref.lang}.wikipedia.org/wiki/${encodeURIComponent(p.title||ref.title)}`,lat:c?+c.lat:null,lng:c?+c.lon:null,ref:{lang:ref.lang,title:p.title||ref.title},imageTitles:(p.images||[]).map(x=>x.title).filter(Boolean),verified:true,source:'Wikipedia'};state.cache.wikidata[key]=out;persistSoon();return out;
   },
   async nearbyWikiPage(item,kind='poi'){
     if(!Number.isFinite(+item.lat)||!Number.isFinite(+item.lng)||!item.name)return null;const radius=kind==='city'?10000:1500;
@@ -240,24 +334,25 @@ const Providers={
     }return null;
   },
   async verifiedPlaceDetails(item,context='',kind='poi'){
-    const name=item?.name||item?.title||'';if(!name)return null;const key=`verifiedplace:v3:${kind}:${normalizeName(name)}:${Number.isFinite(+item.lat)?(+item.lat).toFixed(3):''}:${Number.isFinite(+item.lng)?(+item.lng).toFixed(3):''}`,cached=state.cache.wikidata[key];if(cached)return cached;
+    const name=item?.name||item?.title||'';if(!name)return null;const key=`verifiedplace:v4:${kind}:${normalizeName(name)}:${Number.isFinite(+item.lat)?(+item.lat).toFixed(3):''}:${Number.isFinite(+item.lng)?(+item.lng).toFixed(3):''}`,cached=state.cache.wikidata[key];if(cached)return cached;
     let detail=null,ref=parseWikiRef(item.wiki||item.wikiTag||item.tags?.wikipedia||'');
     if(ref)try{detail=await this.wikiPageExact(ref)}catch(e){}
     if(!detail){const qid=item.wikidata||item.tags?.wikidata||'';if(qid)try{const entity=await this.wikiEntity(qid);if(entity?.ref)detail=await this.wikiPageExact(entity.ref)}catch(e){}}
     if(!detail)detail=await this.nearbyWikiPage(item,kind);
-    if(detail&&Number.isFinite(+item.lat)&&Number.isFinite(+item.lng)&&Number.isFinite(+detail.lat)&&Number.isFinite(+detail.lng)){
+    if(detail&&(!Planner.hasLocation(detail)||!Planner.hasLocation(item)||(nameMatchScore(name,detail.title)<.72&&!(item.wikidata&&item.wikidata===detail.wikidata))))detail=null;
+    if(detail&&Planner.hasLocation(item)&&Planner.hasLocation(detail)){
       const maxKm=kind==='city'?35:3;if(haversine({lat:+item.lat,lng:+item.lng},{lat:+detail.lat,lng:+detail.lng})>maxKm)detail=null;
     }
-    if(!detail){const osmSummary=item.summary||item.tags?.['description:de']||item.tags?.description||'';detail={title:name,summary:osmSummary,photo:'',wiki:'',lat:+item.lat,lng:+item.lng,ref:null,imageTitles:[],verified:false,source:'OpenStreetMap'};return detail;}
+    if(!detail){const osmSummary=item.summary||item.tags?.['description:de']||item.tags?.description||'';detail={title:name,summary:osmSummary,photo:'',wiki:'',lat:Planner.coordinate(item.lat,90),lng:Planner.coordinate(item.lng,180),ref:null,imageTitles:[],verified:false,source:'OpenStreetMap'};return detail;}
     state.cache.wikidata[key]=detail;persistSoon();return detail;
   },
   async wikiImageUrls(detail){
     if(!detail?.ref)return[];const titles=(detail.imageTitles||[]).filter(isUsefulPhotoTitle).slice(0,24),out=[];const add=(url,title,page)=>{if(!url||out.some(x=>x.url===url))return;out.push({url,full:url,title:cleanWikiFileTitle(title),page,verified:true})};if(detail.photo)add(detail.photo,detail.title,detail.wiki);
-    if(titles.length){try{const api=`https://${detail.ref.lang}.wikipedia.org/w/api.php`,u=`${api}?action=query&titles=${encodeURIComponent(titles.join('|'))}&prop=imageinfo&iiprop=url|mime&iiurlwidth=1000&format=json&formatversion=2&origin=*`,j=await apiJson(u);for(const p of j.query?.pages||[]){const i=p.imageinfo?.[0];if(!i||!/image\/(?:jpeg|png|webp)/i.test(i.mime||'')||!isUsefulPhotoTitle(p.title))continue;add(i.thumburl||i.url,p.title,i.descriptionurl||'');if(out.length>=4)break}}catch(e){}}
+    if(titles.length){try{const api=`https://${detail.ref.lang}.wikipedia.org/w/api.php`,u=`${api}?action=query&titles=${encodeURIComponent(titles.join('|'))}&prop=imageinfo&iiprop=url|mime&iiurlwidth=1000&format=json&formatversion=2&origin=*`,j=await apiJson(u);for(const p of j.query?.pages||[]){const i=p.imageinfo?.[0];if(!i||!/image\/(?:jpeg|png|webp)/i.test(i.mime||'')||!isUsefulPhotoTitle(p.title)||nameMatchScore(detail.title,p.title)<.72)continue;add(i.thumburl||i.url,p.title,i.descriptionurl||'');if(out.length>=4)break}}catch(e){}}
     return out.slice(0,4);
   },
   async verifiedCommonsPhotos(name,context=''){
-    const k=`verifiedphoto:v3:${normalizeName(name)}:${normalizeName(context)}`,cached=state.cache.photos[k];if(Array.isArray(cached))return cached;
+    const k=`verifiedphoto:v4:${normalizeName(name)}:${normalizeName(context)}`,cached=state.cache.photos[k];if(Array.isArray(cached))return cached;
     const queries=[`intitle:"${String(name).replace(/"/g,'')}"`,`"${String(name).replace(/"/g,'')}" ${context||''}`.trim()],found=new Map();let anySuccess=false;
     for(const search of queries){
       if(found.size>=4)break;
@@ -266,7 +361,7 @@ const Providers={
         for(const p of j.query?.pages||[]){
           const i=p.imageinfo?.[0];if(!i||!/image\/(?:jpeg|png|webp)/i.test(i.mime||'')||!isUsefulPhotoTitle(p.title))continue;
           const md=i.extmetadata||{},blob=[p.title,md.ObjectName?.value,md.ImageDescription?.value,md.Categories?.value,md.DepictedPeople?.value,md.Location?.value].join(' ').replace(/<[^>]+>/g,' '),score=nameMatchScore(name,blob),contextScore=context?nameMatchScore(context,blob):0;
-          if(score<.72)continue;
+          if(score<.72||(context&&contextScore<.5))continue;
           const url=i.thumburl||i.url;if(!url)continue;
           const candidate={url,full:i.url,title:cleanWikiFileTitle(p.title),page:i.descriptionurl||`https://commons.wikimedia.org/?curid=${p.pageid}`,verified:true,score:score+Math.min(.15,contextScore*.15)};
           const old=found.get(url);if(!old||candidate.score>old.score)found.set(url,candidate);
@@ -284,9 +379,19 @@ const Providers={
     return out.slice(0,4);
   },
   async openingHours(lat,lng){const q=`[out:json][timeout:10];nwr(around:80,${lat},${lng})[opening_hours];out tags center 8;`;const j=await this.overpassJson(q),el=(j.elements||[])[0];return el?.tags?.opening_hours||'';},
-  async route(a,b,mode='car'){
-    if(!a||!b)return null;if(mode==='flight')return {distanceKm:haversine(a,b),durationMin:0,geometry:[[a.lat,a.lng],[b.lat,b.lng]],approx:true};if(['walk','transit','train','bus','ferry'].includes(mode)){const km=haversine(a,b)*(mode==='walk'?1.25:1.1),speed=mode==='walk'?4.5:mode==='transit'?25:mode==='train'?80:mode==='bus'?60:30;return {distanceKm:km,durationMin:km/speed*60,geometry:[[a.lat,a.lng],[b.lat,b.lng]],approx:true}}
-    const u=`https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;try{const j=await apiJson(u),r=j.routes?.[0];if(!r)throw new Error('keine Route');return {distanceKm:r.distance/1000,durationMin:r.duration/60,geometry:r.geometry.coordinates.map(c=>[c[1],c[0]]),approx:false}}catch(e){const km=haversine(a,b)*1.25;return {distanceKm:km,durationMin:km/75*60,geometry:[[a.lat,a.lng],[b.lat,b.lng]],approx:true}}
+  async route(a,b,mode='car') {
+    if(!Planner.hasLocation(a)||!Planner.hasLocation(b))throw new Error('Gültige Start- und Zielkoordinaten fehlen.');
+    const direct=haversine(a,b),line=[[+a.lat,+a.lng],[+b.lat,+b.lng]];
+    if(mode==='flight')return {distanceKm:direct,durationMin:0,geometry:line,approx:true,source:'Luftlinie'};
+    if(['walk','transit','train','bus','ferry'].includes(mode)){const km=direct*(mode==='walk'?1.25:1.1),speed={walk:4.5,transit:25,train:80,bus:60,ferry:30}[mode];return {distanceKm:km,durationMin:km/speed*60,geometry:line,approx:true,source:'Entfernungsschätzung; kein Fahrplan'};}
+    if(direct<.03)return {distanceKm:0,durationMin:0,geometry:line,approx:false,source:'Identischer Standort'};
+    const url=`https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;
+    try {
+      const j=await apiJson(url),r=j.routes?.[0];
+      if(j.code==='NoRoute'||j.code==='NoSegment')return {distanceKm:direct,durationMin:0,geometry:[],approx:true,unreachable:true,source:'OSRM: keine Straßenverbindung'};
+      if(!r||!Number.isFinite(r.duration)||!Number.isFinite(r.distance)||!Array.isArray(r.geometry?.coordinates)||r.duration<0||r.distance<0)throw new Error('Ungültige Straßenroute');
+      return {distanceKm:r.distance/1000,durationMin:r.duration/60,geometry:r.geometry.coordinates.map(c=>[c[1],c[0]]),approx:false,source:'OSRM',retrievedAt:Date.now()};
+    }catch(e){return {distanceKm:direct*1.25,durationMin:direct*1.25/65*60,geometry:line,approx:true,source:'Luftlinien-Schätzung; Straßendaten nicht erreichbar'};}
   },
   async cityPois(lat,lng,radius=4500){
     const q=`[out:json][timeout:13];(nwr(around:${radius},${lat},${lng})[tourism~"attraction|museum|viewpoint"][name];nwr(around:${radius},${lat},${lng})[historic][name];nwr(around:${radius},${lat},${lng})[leisure="park"][name];);out tags center 90;`,j=await this.overpassJson(q),arr=[];
@@ -326,15 +431,48 @@ function renderDiscover(){
   const chips=$('#interestChips');chips.innerHTML='';INTERESTS.forEach(i=>{const b=document.createElement('button');b.className=`chip ${(t?.interests||[]).includes(i)?'on':''}`;b.textContent=i;b.onclick=()=>{if(!t)return;const a=t.interests||[];const p=a.indexOf(i);p>=0?a.splice(p,1):a.push(i);persistSoon();renderDiscover();};chips.appendChild(b)});
   renderSuggestionBoxes();renderWishlistSummary();
 }
-function wishlistKey(kind,item){return kind==='wildlife'?`wildlife:${item.taxonId||normalizeName(item.name)}`:`${kind}:${normalizeName(item.name)}`;}
-function getWishlistEntry(kind,item,t=activeTrip()){if(!t)return null;const key=wishlistKey(kind,item);return (t.wishlist||[]).find(x=>x.key===key)||null;}
+function wishlistKey(kind,item) {
+  if(kind==='wildlife')return `wildlife:${item.taxonId||normalizeName(item.name)}`;
+  const entity=item.wikidata||item.tags?.wikidata||item.wiki||item.wikiTag;
+  return `${kind}:${entity||normalizeName(item.name)+(Planner.hasLocation(item)?`:${Number(item.lat).toFixed(4)}:${Number(item.lng).toFixed(4)}`:'')}`;
+}
+function getWishlistEntry(kind,item,t=activeTrip()) {
+  if(!t)return null;const key=wishlistKey(kind,item);
+  return (t.wishlist||[]).find(x=>x.key===key)|| (t.wishlist||[]).find(x=>x.kind===kind&&x.key===`${kind}:${normalizeName(item.name)}`&&(!Planner.hasLocation(x)||!Planner.hasLocation(item)||haversine(x,item)<5))||null;
+}
 function wishlistIcon(kind){return kind==='city'?'🏙':kind==='wildlife'?'🐾':'★';}
 function wishlistKindLabel(kind){return kind==='city'?'Stadt':kind==='wildlife'?'Wildlife':'Highlight';}
-function setWishlistSelection(kind,item,selected=true,priority='high'){const t=activeTrip();if(!t)return;t.wishlist=t.wishlist||[];const key=wishlistKey(kind,item),idx=t.wishlist.findIndex(x=>x.key===key);if(!selected){if(idx>=0)t.wishlist.splice(idx,1);}else{const clean={...item};delete clean.kind;const entry={key,kind,priority:priority||'high',name:item.name||item.title||'Unbenannt',lat:Number.isFinite(+item.lat)?+item.lat:null,lng:Number.isFinite(+item.lng)?+item.lng:null,item:clean,selectedAt:Date.now()};if(idx>=0)t.wishlist[idx]={...t.wishlist[idx],...entry,priority:t.wishlist[idx].priority||priority};else t.wishlist.push(entry);}persistSoon();renderDiscover();}
+function setWishlistSelection(kind,item,selected=true,priority='high') {
+  const t=activeTrip();if(!t)return;t.wishlist=t.wishlist||[];
+  const existing=getWishlistEntry(kind,item),key=existing?.key||wishlistKey(kind,item),idx=t.wishlist.findIndex(x=>x.key===key);
+  if(!selected){if(idx>=0)t.wishlist.splice(idx,1);}
+  else {
+    const clean={...item};delete clean.kind;
+    const entry={key,kind,priority:priority||'high',name:item.name||item.title||'Unbenannt',lat:Planner.coordinate(item.lat,90),lng:Planner.coordinate(item.lng,180),item:clean,selectedAt:Date.now(),stayDays:existing?.stayDays||1,durationMin:existing?.durationMin||Planner.duration({kind})};
+    if(idx>=0)t.wishlist[idx]={...existing,...entry,priority:existing.priority||priority};else t.wishlist.push(entry);
+  }
+  persistSoon();renderDiscover();
+}
 function updateWishlistPriority(key,priority){const t=activeTrip(),x=t?.wishlist?.find(e=>e.key===key);if(!x||!WISH_PRIORITIES[priority])return;x.priority=priority;persistSoon();renderWishlistSummary();renderSuggestionBoxes();}
 function wishlistPriorityOptions(value){return Object.entries(WISH_PRIORITIES).map(([k,v])=>`<option value="${k}" ${value===k?'selected':''}>${v.label}</option>`).join('');}
 function wishlistControlHtml(kind,item){const x=getWishlistEntry(kind,item),key=wishlistKey(kind,item);return `<div class="wishcontrol ${x?'selected':''}"><button class="wishcheck ${x?'on':''}" data-wish-toggle="${esc(kind)}" data-wish-item='${esc(JSON.stringify(item))}' title="${x?'Aus Auswahl entfernen':'Für Route auswählen'}">${x?'✓':'＋'}</button>${x?`<select data-wish-priority="${esc(key)}">${wishlistPriorityOptions(x.priority)}</select>`:''}</div>`;}
-function renderWishlistSummary(){const t=activeTrip(),list=[...(t?.wishlist||[])].sort((a,b)=>(WISH_PRIORITIES[b.priority]?.weight||0)-(WISH_PRIORITIES[a.priority]?.weight||0));const box=$('#wishlistSummary'),count=$('#wishlistCount'),btn=$('#autoRouteBtn');if(!box||!count)return;count.textContent=`${list.length} ausgewählt`;if(btn)btn.disabled=!list.length;if(!list.length){box.className='wishlistsummary empty';box.textContent='Noch nichts ausgewählt.';return}box.className='wishlistsummary';const counts={city:0,highlight:0,wildlife:0};list.forEach(x=>counts[x.kind]=(counts[x.kind]||0)+1);box.innerHTML=`<div class="wishliststats"><span>🏙 ${counts.city||0}</span><span>★ ${counts.highlight||0}</span><span>🐾 ${counts.wildlife||0}</span></div><div class="wishlistchips">${list.map(x=>`<button data-wish-remove="${esc(x.key)}" class="wishlistchip ${x.priority}"><span>${wishlistIcon(x.kind)} ${esc(x.name)}</span><small>${esc(WISH_PRIORITIES[x.priority]?.label||x.priority)} · ×</small></button>`).join('')}</div>`;}
+function renderWishlistSummary() {
+  const t=activeTrip(),list=[...(t?.wishlist||[])].sort((a,b)=>(WISH_PRIORITIES[b.priority]?.weight||0)-(WISH_PRIORITIES[a.priority]?.weight||0));
+  const box=$('#wishlistSummary'),count=$('#wishlistCount'),btn=$('#autoRouteBtn');if(!box||!count)return;
+  count.textContent=`${list.length} ausgewählt`;if(btn)btn.disabled=!list.length;
+  box.className='wishlistsummary'+(!list.length?' empty':'');
+  box.innerHTML=list.length?list.map(x=>`<div class="wishrow"><div><b>${wishlistIcon(x.kind)} ${esc(x.name)}</b><div class="tiny">${esc(WISH_PRIORITIES[x.priority]?.label||x.priority)} · ${x.stayDays||1} Aufenthaltstag(e) · je ${durText(x.durationMin||Planner.duration(x))}</div></div><div class="actions"><button data-wish-config="${esc(x.key)}">Anpassen</button><button data-wish-remove="${esc(x.key)}" aria-label="${esc(x.name)} aus Auswahl entfernen">×</button></div></div>`).join(''):'Noch nichts ausgewählt.';
+}
+function wishSettingsModal(key) {
+  const t=activeTrip(),wish=t?.wishlist?.find(x=>x.key===key);if(!wish)return;
+  showModal(`<h2>${esc(wish.name)}</h2><p class="lead">Priorität und gewünschte Zeit für den nächsten Routenvorschlag.</p><div class="formgrid"><label>Priorität<select id="mWishPriority">${wishlistPriorityOptions(wish.priority)}</select></label><label>Aufenthaltstage<input id="mWishDays" type="number" min="1" max="30" value="${wish.stayDays||1}"></label><label>Minuten je Aufenthaltstag<input id="mWishDuration" type="number" min="15" max="720" step="15" value="${wish.durationMin||Planner.duration(wish)}"></label></div><p class="tiny">Fahrtzeit und Übernachtung werden zusätzlich eingeplant. Wildlife-Orte werden anhand der Taxon-ID und des Reisemonats gesucht.</p><div class="actions"><button data-close-modal>Abbrechen</button><button id="saveWishBtn" class="primary">Übernehmen</button></div>`,()=>{
+    $('#saveWishBtn').onclick=()=>{
+      const days=Number($('#mWishDays').value),duration=Number($('#mWishDuration').value);
+      if(!Number.isInteger(days)||days<1||days>30||!Number.isFinite(duration)||duration<15||duration>720){toast('Gültige Aufenthaltsdauer wählen.');return;}
+      Object.assign(wish,{priority:$('#mWishPriority').value,stayDays:days,durationMin:duration});persistSoon();closeModal();renderDiscover();
+    };
+  });
+}
 function suggestionFooter(kind,total,shown){
   if(!total||total<=5)return'';
   const more=shown<total;
@@ -347,7 +485,7 @@ async function enrichCitySuggestionThumbs(cities){
   const context=activeTrip()?.destination||'';
   for(const city of cities||[]){
     const k=`citythumb:${normalizeName(city.name)}:${(+city.lat||0).toFixed(3)}`;if(city.photo||city.photoChecked||verifiedEnrichmentPending.has(k))continue;verifiedEnrichmentPending.add(k);
-    try{const detail=await Providers.verifiedPlaceDetails(city,context,'city'),photos=await Providers.verifiedPhotosForItem(city,context,'city',detail);if(detail?.summary)city.summary=detail.summary;if(detail?.wiki)city.wiki=detail.wiki;if(photos[0]?.url){city.photo=photos[0].url;city.photoVerified=true}city.photoChecked=true;persistSoon();renderCitySuggestions(suggestionData('cities'));}catch(e){}finally{verifiedEnrichmentPending.delete(k)}
+    try{const detail=await Providers.verifiedPlaceDetails(city,context,'city'),photos=await Providers.verifiedPhotosForItem(city,context,'city',detail);if(detail?.summary)city.summary=detail.summary;if(detail?.wiki)city.wiki=detail.wiki;if(photos[0]?.url){city.photo=photos[0].url;city.photoVerified=true}city.photoChecked=true;persistSoon();renderCitySuggestions(suggestionData('cities'));}catch(e){city.photoChecked=true;}finally{verifiedEnrichmentPending.delete(k)}
   }
 }
 function renderAttractionSuggestions(attr){
@@ -358,9 +496,9 @@ function renderWildlifeSuggestions(wild){
 }
 function suggestionData(kind){
   const t=activeTrip();if(!t)return[];
-  if(kind==='cities')return state.cache.cities[`cities:v5:${normalizeName(t.country||t.destination)}`]||[];
-  if(kind==='attractions')return state.cache.wikidata[`attr:v5:${normalizeName(t.country||t.destination)}`]||[];
-  if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return state.cache.wildlife[`wild:v2:${normalizeName(t.destination)}:${month}`]||[];}
+  if(kind==='cities')return state.cache.cities[`cities:v6:${normalizeName(t.country||t.destination)}`]||[];
+  if(kind==='attractions')return state.cache.wikidata[`attr:v6:${normalizeName(t.country||t.destination)}`]||[];
+  if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return state.cache.wildlife[`wild:v3:${normalizeName(t.destination)}:${month}`]||[];}
   return[];
 }
 function changeSuggestionLimit(kind,more){
@@ -379,16 +517,171 @@ function autoLegMode(a,b,distanceKm){if(distanceKm<=550)return'rentalcar';if(dis
 function autoLegDuration(distanceKm,mode){if(mode==='flight')return Math.max(60,Math.round(distanceKm/720*60));if(mode==='train')return Math.max(90,Math.round(distanceKm/105*60));return Math.max(30,Math.round(distanceKm/72*60));}
 function minutesToClock(base,min){return minToTime(timeToMin(base)+Math.round(min||0));}
 function autoRouteOrder(nodes){if(nodes.length<2)return nodes;const score=x=>(WISH_PRIORITIES[x.priority]?.weight||1)+(x.kind==='city'?0.4:0);let start=[...nodes].sort((a,b)=>score(b)-score(a)||(b.item?.population||0)-(a.item?.population||0))[0],rem=nodes.filter(x=>x!==start),out=[start],cur=start;while(rem.length){let bi=0,best=Infinity;for(let i=0;i<rem.length;i++){const d=haversine(cur,rem[i]),prio=WISH_PRIORITIES[rem[i].priority]?.weight||1,cost=d/(0.78+prio*.08);if(cost<best){best=cost;bi=i}}cur=rem.splice(bi,1)[0];out.push(cur)}return out;}
-async function resolveWishlistNodes(list,onStatus=null){const t=activeTrip(),v=activeVersion(),month=v?.startDate?new Date(`${v.startDate}T12:00:00`).getMonth()+1:0,out=[];for(let i=0;i<list.length;i++){const x=list[i],node={...x,item:{...(x.item||{})},lat:Number.isFinite(+x.lat)?+x.lat:null,lng:Number.isFinite(+x.lng)?+x.lng:null};if(x.kind==='wildlife'&&(!Number.isFinite(node.lat)||!Number.isFinite(node.lng))){onStatus?.(`Wildlife-Hotspot ${i+1}/${list.length}: ${x.name}`);try{const h=await Providers.wildlifeBestHotspot(x.item?.taxonId,t.destination,month);if(h){node.lat=h.lat;node.lng=h.lng;node.hotspot=h;node.item.hotspot=h}}catch(e){node.resolveError=e.message}}out.push(node)}return out;}
-function objectOpenIssues(obj,type='stop'){const explicit=[...(obj?.openIssues||[])];if(type==='connection'&&obj?.planningPlaceholder){if(!obj.operator)explicit.push('Anbieter/Betreiber noch offen');if(['flight','train','bus','ferry'].includes(obj.mode)&&!obj.number)explicit.push('Verbindungsnummer noch offen');if(obj.timeEstimated)explicit.push('Abfahrts- und Ankunftszeit sind zunächst geschätzt');if(obj.mode==='other')explicit.push('Verkehrsmittel noch festlegen');}if(type==='transfer'&&obj?.planningPlaceholder){if(!obj.provider)explicit.push('Transfer-Anbieter noch offen');if(obj.timeEstimated)explicit.push('Transferdauer ist zunächst geschätzt');}if(type==='accommodation'){const a=obj?.accommodation;if(obj?.planningPlaceholder||a?.planningPlaceholder){if(!a?.address)explicit.push('Konkrete Unterkunft und Adresse noch offen');if(!a?.bookingRef)explicit.push('Buchungsdaten noch offen');}}return [...new Set(explicit.filter(Boolean))];}
+async function resolveWishlistNodes(list,onStatus=null,trip=activeTrip(),version=activeVersion()) {
+  const month=Number(version?.startDate?.slice(5,7))||0,out=[];
+  for(let i=0;i<list.length;i++) {
+    const x=list[i],node={...x,item:{...(x.item||{})},lat:Planner.coordinate(x.lat,90),lng:Planner.coordinate(x.lng,180)};
+    if(x.kind==='wildlife'&&!Planner.hasLocation(node)) {
+      onStatus?.(`Wildlife-Hotspot ${i+1}/${list.length}: ${x.name}`);
+      try {
+        if(!x.item?.taxonId)throw new Error('Taxon-ID fehlt; Tier in Entdecken erneut auswählen.');
+        const h=await Providers.wildlifeBestHotspot(x.item.taxonId,trip.destination,month);
+        if(Planner.hasLocation(h)){node.lat=+h.lat;node.lng=+h.lng;node.hotspot=h;node.item.hotspot=h;}
+        else node.resolveError='Kein geeigneter, öffentlich lokalisierter Wildlife-Nachweis gefunden';
+      } catch(e) {node.resolveError=e.message;}
+    }
+    out.push(node);
+  }
+  return out;
+}
+function objectOpenIssues(obj,type='stop') {
+  if(!obj)return[];const issues=[];
+  const missing=value=>!String(value||'').trim()||/\boffen\b/i.test(value);
+  if(type==='connection') {
+    if(obj.mode==='other')issues.push('Verkehrsmittel noch festlegen');
+    if(missing(obj.from))issues.push('Startort noch konkretisieren');
+    if(missing(obj.to))issues.push('Zielort noch konkretisieren');
+    if(!obj.departDate||!obj.arriveDate||timeToMin(obj.departTime)===null||timeToMin(obj.arriveTime)===null)issues.push('Abfahrts- und Ankunftszeit noch ergänzen');
+    if(obj.timeEstimated)issues.push('Zeitangaben sind geschätzt – anhand der Verbindung prüfen');
+    if(['flight','train','bus','ferry'].includes(obj.mode)&&!obj.number)issues.push('Verbindungsnummer noch offen');
+    if(['flight','train','bus','ferry','rentalcar'].includes(obj.mode)&&!obj.operator)issues.push('Anbieter/Betreiber noch offen');
+    if(obj.mode==='flight'&&obj.timeEstimated)issues.push('Flugverfügbarkeit und lokale Zeitzonen noch prüfen');
+  } else if(type==='transfer') {
+    if(missing(obj.fromName)||missing(obj.toName))issues.push('Start und Ziel des Transfers konkretisieren');
+    if(!obj.durationMin)issues.push('Transferdauer noch festlegen');
+    if(obj.timeEstimated)issues.push('Transferdauer und Route sind zunächst geschätzt');
+    if(!obj.provider&&!['car','walk'].includes(obj.mode))issues.push('Transfer-Anbieter noch offen');
+  } else if(type==='accommodation') {
+    const a=obj.accommodation||{};
+    if(missing(obj.name)||!a.address)issues.push('Konkrete Unterkunft und Adresse noch offen');
+    if(!a.checkInDate||!a.checkOutDate||a.checkOutDate<=a.checkInDate)issues.push('Check-out muss nach dem Check-in liegen');
+    if(!Planner.hasLocation(obj))issues.push('Standort der Unterkunft noch festlegen');
+    if(!a.bookingRef)issues.push('Buchungs-/Reservierungsdaten noch offen');
+  } else {
+    issues.push(...(obj.openIssues||[]));
+    if(!Planner.hasLocation(obj))issues.push('Standort noch festlegen');
+  }
+  return [...new Set(issues.filter(Boolean))];
+}
+function planningReviewHtml(obj,type) {
+  if(type==='stop')return obj.openIssues?.length?`<label class="checkline"><input id="mPlanningChecked" type="checkbox"> Standort, Öffnungszeiten und Besuchsdauer geprüft</label><p class="tiny">${obj.openIssues.map(esc).join(' · ')}</p>`:'';
+  return `<label class="checkline"><input id="mPlanningChecked" type="checkbox" ${obj.timeEstimated?'':'checked'}> Zeiten und ${type==='connection'?'konkrete Verbindung':'Transferroute'} geprüft</label><p class="tiny">Eine automatisch geschätzte Zeit bleibt offen, bis du sie geprüft hast.</p>`;
+}
+function invalidateStopRoutes(v,stop) {
+  for(const day of v.days)for(let i=0;i<day.stops.length;i++)if(day.stops[i].id===stop.id){day.stops[i].routeToNext=null;if(i)day.stops[i-1].routeToNext=null;}
+  for(const connection of v.connections||[])for(const prefix of ['from','to'])if(stop.wishlistKey&&connection[prefix+'WishlistKey']===stop.wishlistKey){
+    if(connection[prefix+'Lat']!==stop.lat||connection[prefix+'Lng']!==stop.lng){connection.geometry=null;connection.distanceKm=0;connection.durationMin=0;connection.approx=true;connection.timeEstimated=true;}
+    connection[prefix]=stop.name;connection[prefix+'Lat']=stop.lat;connection[prefix+'Lng']=stop.lng;
+  }
+  for(const tr of v.transfers||[])if(tr.toStopId===stop.id) {
+    const prefix=tr.transferType==='to_airport'?'from':'to';
+    if(tr[prefix+'Lat']!==stop.lat||tr[prefix+'Lng']!==stop.lng){tr.distanceKm=0;tr.approx=true;tr.timeEstimated=true;}
+    tr[prefix+'Name']=stop.name;tr[prefix+'Lat']=stop.lat;tr[prefix+'Lng']=stop.lng;
+  }
+}
+function syncConnectionTransfers(v,connection,previous=null){
+  for(const transfer of v.transfers||[])if(transfer.sourceRef===`connection:${connection.id}`){
+    const departure=transfer.transferType==='to_airport';transfer.date=departure?connection.departDate:connection.arriveDate;
+    const changed=previous&&(previous.mode!==connection.mode||(departure?previous.from!==connection.from:previous.to!==connection.to));
+    if(changed){const prefix=departure?'to':'from';transfer[prefix+'Name']=departure?'Abfahrtsort (offen)':'Ankunftsort (offen)';transfer[prefix+'Lat']=null;transfer[prefix+'Lng']=null;transfer.distanceKm=0;transfer.approx=true;transfer.timeEstimated=true;}
+  }
+}
 function issueBadgeHtml(issues){return issues?.length?`<div class="openissue"><b>⚠ ${issues.length} offen</b><span>${esc(issues[0])}${issues.length>1?` · +${issues.length-1}`:''}</span></div>`:'';}
 function planningIssueCount(v){let n=0;for(const c of v.connections||[])if(objectOpenIssues(c,'connection').length)n++;for(const tr of v.transfers||[])if(objectOpenIssues(tr,'transfer').length)n++;for(const d of v.days||[])for(const s of d.stops||[])if(objectOpenIssues(s,s.accommodation?'accommodation':'stop').length)n++;n+=(v.routeMeta?.deferred||[]).length;return n;}
 function makeAutoAccommodation(node,day,nextDate){return {id:uid('stop'),name:`Unterkunft ${node.kind==='city'?'in':'bei'} ${node.name} (offen)`,lat:node.lat,lng:node.lng,type:'hotel',priority:'high',durationMin:20,durationWish:20,notes:'Automatisch angelegter Unterkunfts-Platzhalter. Konkrete Unterkunft später auswählen.',openingHours:'',fixedStart:'18:00',images:[],tags:['auto-route','placeholder'],wildlife:[],modeToNext:'walk',routeToNext:null,planningPlaceholder:true,openIssues:['Konkrete Unterkunft auswählen'],accommodation:{kind:'Unterkunft offen',checkInDate:day.date,checkInTime:'15:00',checkOutDate:nextDate||day.date,checkOutTime:'10:00',address:'',bookingRef:'',planningPlaceholder:true}};}
 function makeAutoStop(node,fixedStart='11:00'){const htxt=`${node.item?.highlightType||''} ${node.name||''}`;const type=node.kind==='city'?'city':node.kind==='wildlife'?'wildlife':/(Nationalpark|Natur|Riff|Insel|Berg|Fels|Schlucht|Wasserfall|Küste|Strand|Park)/i.test(htxt)?'nature':'sight',issues=[];if(node.kind==='city')issues.push('Konkrete Sehenswürdigkeiten für die Stadt noch auswählen');if(node.kind==='wildlife')issues.push(node.hotspot?'Wildlife-Hotspot vor der Reise anhand aktueller Meldungen prüfen':'Geeigneten Wildlife-Hotspot noch festlegen');if(node.kind==='highlight')issues.push('Öffnungszeiten und sinnvolle Besuchsdauer noch prüfen');return {id:uid('stop'),name:node.kind==='wildlife'?`${node.name} – Wildlife-Hotspot`:node.name,lat:node.lat,lng:node.lng,type,priority:node.priority,durationMin:node.kind==='city'?180:90,durationWish:activityDurationForWish(node),notes:node.kind==='wildlife'&&node.hotspot?`Automatisch aus historischen iNaturalist-Beobachtungen abgeleiteter Hotspot (${node.hotspot.count} Beobachtungen im Cluster). Sichtung nicht garantiert.`:'Aus deiner Entdecken-Auswahl automatisch in den Routenvorschlag übernommen.',openingHours:'',fixedStart,images:node.item?.photo?[{url:node.item.photo,full:node.item.photo,title:node.name,page:''}]:[],tags:['auto-route',node.kind],wildlife:node.kind==='wildlife'?[node.name]:[],modeToNext:'car',routeToNext:null,planningPlaceholder:issues.length>0,openIssues:issues,wishlistKey:node.key};}
 function makeAutoConnection(a,b,date,startTime='08:00'){const km=haversine(a,b),mode=autoLegMode(a,b,km),dur=autoLegDuration(km,mode),defs=connectionModeDefaults(mode),issues=[mode==='rentalcar'?'Mietwagen/Fahrzeug und konkrete Route noch festlegen':mode==='train'?'Konkrete Zugverbindung noch auswählen':'Konkreten Flug noch auswählen','Zeitangaben sind zunächst nur eine Planungsschätzung'];return {id:uid('conn'),mode,title:'Automatische Weiterreise',operator:'',number:'',reference:'',from:a.name,to:b.name,departDate:date,departTime:startTime,arriveDate:date,arriveTime:minutesToClock(startTime,dur),departureBuffer:defs.departureBuffer,arrivalBuffer:defs.arrivalBuffer,durationMin:dur,distanceKm:km,notes:'Automatisch vorgeschlagener Verbindungsbaustein. Verkehrsmittel und Buchungsdaten können später geändert werden.',planningPlaceholder:true,timeEstimated:true,openIssues:issues,autoSuggestedMode:mode};}
 function addAutoTransfers(v,conn,fromLodging,toLodging){if(!['flight','train','bus','ferry'].includes(conn.mode))return;const base=conn.mode==='flight'?45:20;if(fromLodging)v.transfers.push({id:uid('transfer'),sourceRef:`connection:${conn.id}`,toStopId:fromLodging.id,transferType:'to_airport',date:conn.departDate,fromName:fromLodging.name,toName:`${MODES[conn.mode]} Abfahrtsort (offen)`,fromLat:fromLodging.lat,fromLng:fromLodging.lng,toLat:null,toLng:null,mode:'transit',provider:'',reference:'',distanceKm:0,durationMin:base,extraBufferMin:10,approx:true,notes:'Automatischer Transfer-Platzhalter vor der Langstrecken-Verbindung.',planningPlaceholder:true,timeEstimated:true,openIssues:['Konkreten Abfahrtsort und Transferweg festlegen']});if(toLodging)v.transfers.push({id:uid('transfer'),sourceRef:`connection:${conn.id}`,toStopId:toLodging.id,transferType:'to_lodging',date:conn.arriveDate,fromName:`${MODES[conn.mode]} Ankunftsort (offen)`,toName:toLodging.name,fromLat:null,fromLng:null,toLat:toLodging.lat,toLng:toLodging.lng,mode:'transit',provider:'',reference:'',distanceKm:0,durationMin:base,extraBufferMin:10,approx:true,notes:'Automatischer Transfer-Platzhalter nach der Langstrecken-Verbindung.',planningPlaceholder:true,timeEstimated:true,openIssues:['Konkreten Ankunftsort und Transferweg festlegen']});}
-async function buildAutomaticRoute(opts={}){const t=activeTrip(),base=activeVersion();if(!t||!base)throw new Error('Keine aktive Reise.');let list=[...(t.wishlist||[])];if(!opts.includeOptional)list=list.filter(x=>x.priority!=='optional');if(!list.length)throw new Error('Wähle zuerst mindestens ein Ziel aus.');const daysCount=daysBetween(base.startDate,base.endDate),capacity=Math.max(2,daysCount*2),sorted=[...list].sort((a,b)=>(WISH_PRIORITIES[b.priority]?.weight||0)-(WISH_PRIORITIES[a.priority]?.weight||0)),keep=sorted.filter(x=>['must','high'].includes(x.priority)),rest=sorted.filter(x=>!['must','high'].includes(x.priority));for(const x of rest)if(keep.length<capacity)keep.push(x);const deferred=sorted.filter(x=>!keep.includes(x));const nodesRaw=await resolveWishlistNodes(keep,opts.onStatus),resolved=nodesRaw.filter(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng)),unresolved=nodesRaw.filter(x=>!Number.isFinite(x.lat)||!Number.isFinite(x.lng));if(!resolved.length)throw new Error('Keines der ausgewählten Ziele konnte geografisch eingeordnet werden.');const nodes=autoRouteOrder(resolved),v={id:uid('ver'),name:opts.name||`Auto-Route · ${new Date().toLocaleDateString('de-DE')}`,startDate:base.startDate,endDate:base.endDate,days:[],flights:[],connections:[],transfers:[],createdAt:Date.now(),routeMeta:{generatedAt:Date.now(),source:'wishlist',wishlistKeys:keep.map(x=>x.key),deferred:[...deferred,...unresolved].map(x=>({key:x.key,name:x.name,reason:unresolved.includes(x)?'Kein belastbarer Standort gefunden':'Kapazität/Priorität'}))}};for(let i=0;i<daysCount;i++)v.days.push({id:uid('day'),date:addDays(v.startDate,i),startTime:state.settings.defaultStart,endTime:state.settings.defaultEnd,stops:[]});const daySlots=[],stayLengths=[];if(nodes.length<=daysCount){const stays=nodes.map(n=>n.kind==='city'?2:1);let extra=Math.max(0,daysCount-stays.reduce((a,b)=>a+b,0));const ranked=nodes.map((n,i)=>({i,w:WISH_PRIORITIES[n.priority]?.weight||1,cap:n.kind==='city'?5:n.kind==='wildlife'?2:2})).sort((a,b)=>b.w-a.w||(nodes[a.i].kind==='city'?-1:1));while(extra>0){let changed=false;for(const r of ranked){if(extra<=0)break;if(stays[r.i]<r.cap){stays[r.i]++;extra--;changed=true}}if(!changed)break}let cursor=0;for(let i=0;i<nodes.length;i++){daySlots.push(Math.min(cursor,daysCount-1));stayLengths.push(stays[i]);cursor+=stays[i]}v.routeMeta.flexDays=Math.max(0,daysCount-cursor);}else{let cursor=0,used=0,prev=null;for(let i=0;i<nodes.length;i++){const node=nodes[i],dur=activityDurationForWish(node);let travel=0;if(prev)travel=autoLegDuration(haversine(prev,node),autoLegMode(prev,node,haversine(prev,node)));if(i&&used+travel+dur>570){cursor++;used=0}if(cursor>=v.days.length)cursor=v.days.length-1;daySlots.push(cursor);stayLengths.push(1);used+=travel+dur+45;prev=node;if(used>500&&cursor<v.days.length-1){cursor++;used=0}}v.routeMeta.flexDays=0}const lodgings=[];let currentLodging=null,prevNode=null;for(let i=0;i<nodes.length;i++){const node=nodes[i],di=daySlots[i],day=v.days[di],nextNode=nodes[i+1],nextDi=daySlots[i+1]??di,moveBase=!currentLodging||!prevNode||haversine(prevNode,node)>120||node.kind==='city';let conn=null;if(prevNode){conn=makeAutoConnection(prevNode,node,day.date,'08:00');v.connections.push(conn)}if(moveBase){currentLodging=makeAutoAccommodation(node,day,nextNode?v.days[Math.min(nextDi,v.days.length-1)].date:v.endDate);lodgings.push(currentLodging)}const arr=conn?timeToMin(conn.arriveTime)+(conn.arrivalBuffer||0)+(conn.mode==='flight'?45:['train','bus','ferry'].includes(conn.mode)?20:0):10*60,activityStart=minToTime(Math.min(arr,18*60));const stop=makeAutoStop(node,activityStart);day.stops.push(stop);if(moveBase)day.stops.push(currentLodging);for(let sj=1;sj<(stayLengths[i]||1);sj++){const extraDay=v.days[di+sj];if(!extraDay)break;if(node.kind==='city')extraDay.stops.push({id:uid('stop'),name:`${node.name} – weiterer Stadttag`,lat:node.lat,lng:node.lng,type:'city',priority:node.priority,durationMin:120,durationWish:300,notes:'Zusätzlicher Aufenthaltstag aus dem automatischen Routenvorschlag.',openingHours:'',fixedStart:'10:00',images:[],tags:['auto-route','city-day'],wildlife:[],modeToNext:'walk',routeToNext:null,planningPlaceholder:true,openIssues:['Konkretes Sightseeing-Programm für diesen Stadttag noch auswählen']});else if(node.kind==='wildlife')extraDay.stops.push({id:uid('stop'),name:`${node.name} – zusätzlicher Wildlife-Zeitblock`,lat:node.lat,lng:node.lng,type:'wildlife',priority:node.priority,durationMin:90,durationWish:180,notes:'Zusätzlicher Zeitblock für Wildlife; aktuelle Beobachtungslage später prüfen.',openingHours:'',fixedStart:'08:00',images:node.item?.photo?[{url:node.item.photo,full:node.item.photo,title:node.name,page:''}]:[],tags:['auto-route','wildlife-buffer'],wildlife:[node.name],modeToNext:'car',routeToNext:null,planningPlaceholder:true,openIssues:['Aktuellen Wildlife-Hotspot und beste Tageszeit später prüfen']});else extraDay.stops.push({id:uid('stop'),name:`Puffertag bei ${node.name}`,lat:node.lat,lng:node.lng,type:'nature',priority:'optional',durationMin:60,durationWish:120,notes:'Flexibler Puffertag im automatischen Routenvorschlag.',openingHours:'',fixedStart:'10:00',images:[],tags:['auto-route','buffer-day'],wildlife:[],modeToNext:'car',routeToNext:null});}if(conn){const fromL=lodgings.length>1?lodgings[lodgings.length-2]:null;addAutoTransfers(v,conn,fromL,currentLodging)}prevNode=node}const first=nodes[0],last=nodes[nodes.length-1],firstLodging=lodgings[0]||null,lastLodging=lodgings[lodgings.length-1]||null;const arrivalConn={id:uid('conn'),mode:'other',title:'Anreise',operator:'',number:'',reference:'',from:'Startort / Heimat (offen)',to:first.name,departDate:v.startDate,departTime:'',arriveDate:v.startDate,arriveTime:'10:00',departureBuffer:0,arrivalBuffer:30,durationMin:0,distanceKm:0,notes:'Anreise-Platzhalter. Startort und konkretes Verkehrsmittel später ergänzen.',planningPlaceholder:true,timeEstimated:true,openIssues:['Startort der Reise festlegen','Verkehrsmittel für die Anreise festlegen','Konkrete Ankunftszeit ergänzen']};const departureConn={id:uid('conn'),mode:'other',title:'Abreise',operator:'',number:'',reference:'',from:last.name,to:'Heimat / Weiterreise (offen)',departDate:v.endDate,departTime:'18:00',arriveDate:v.endDate,arriveTime:'',departureBuffer:30,arrivalBuffer:0,durationMin:0,distanceKm:0,notes:'Abreise-Platzhalter. Ziel und konkretes Verkehrsmittel später ergänzen.',planningPlaceholder:true,timeEstimated:true,openIssues:['Ziel der Abreise festlegen','Verkehrsmittel für die Abreise festlegen','Konkrete Abfahrts-/Ankunftszeit ergänzen']};v.connections.unshift(arrivalConn);v.connections.push(departureConn);if(firstLodging)v.transfers.push({id:uid('transfer'),sourceRef:`connection:${arrivalConn.id}`,toStopId:firstLodging.id,transferType:'to_lodging',date:v.startDate,fromName:'Ankunftspunkt (offen)',toName:firstLodging.name,fromLat:null,fromLng:null,toLat:firstLodging.lat,toLng:firstLodging.lng,mode:'transit',provider:'',reference:'',distanceKm:0,durationMin:45,extraBufferMin:10,approx:true,notes:'Automatischer Transfer-Platzhalter nach der Anreise.',planningPlaceholder:true,timeEstimated:true,openIssues:['Ankunftspunkt und Transferweg festlegen']});if(lastLodging)v.transfers.push({id:uid('transfer'),sourceRef:`connection:${departureConn.id}`,toStopId:lastLodging.id,transferType:'to_airport',date:v.endDate,fromName:lastLodging.name,toName:'Abfahrtsort (offen)',fromLat:lastLodging.lat,fromLng:lastLodging.lng,toLat:null,toLng:null,mode:'transit',provider:'',reference:'',distanceKm:0,durationMin:45,extraBufferMin:10,approx:true,notes:'Automatischer Transfer-Platzhalter vor der Abreise.',planningPlaceholder:true,timeEstimated:true,openIssues:['Abfahrtsort und Transferweg festlegen']});t.versions.push(v);t.selectedVersionId=v.id;persistSoon();return v;}
-function autoRouteModal(){const t=activeTrip(),v=activeVersion(),list=t?.wishlist||[];if(!t||!v||!list.length){toast('Wähle zuerst Städte, Highlights oder Tiere aus.');return}showModal(`<h2>✨ Automatischen Routenvorschlag erstellen</h2><p class="lead">Die Auswahl wird nach Priorität und geografischer Nähe sortiert. Die App legt eine neue Reiseversion mit Stopps, Unterkunfts-Platzhaltern, Langstrecken-Verbindungen, Transfers und einer ersten zeitlichen Einordnung an.</p><div class="routepreview"><b>${list.length} ausgewählte Ziele</b><p>${list.map(x=>`${wishlistIcon(x.kind)} ${esc(x.name)} · ${esc(WISH_PRIORITIES[x.priority]?.label||x.priority)}`).join('<br>')}</p></div><div class="formgrid one"><label>Name der neuen Version<input id="mAutoRouteName" value="Auto-Route aus Wunschliste"></label><label class="checkline"><input id="mAutoIncludeOptional" type="checkbox" checked> Auch optionale Ziele einplanen, soweit zeitlich möglich</label></div><div class="warnline">⚠ Der Vorschlag ist bewusst ein Planungsentwurf. Konkrete Flüge/Züge, Unterkünfte, Adressen und Buchungsdaten bleiben zunächst offen und werden im Planer gelb markiert.</div><div id="autoRouteStatus" class="tiny" style="margin-top:9px"></div><div class="actions"><button data-close-modal>Abbrechen</button><button id="buildAutoRouteBtn" class="primary">Routenvorschlag erstellen</button></div>`,()=>{$('#buildAutoRouteBtn').onclick=async()=>{const btn=$('#buildAutoRouteBtn'),status=$('#autoRouteStatus');btn.disabled=true;btn.textContent='Plant …';try{const nv=await buildAutomaticRoute({name:$('#mAutoRouteName').value.trim()||'Auto-Route aus Wunschliste',includeOptional:$('#mAutoIncludeOptional').checked,onStatus:m=>status.textContent=m});closeModal();renderAll();switchView('plan');toast(`Routenvorschlag „${nv.name}“ erstellt.`);}catch(e){status.innerHTML=`<span class="errorline" style="padding:5px 7px;display:block">${esc(e.message)}</span>`;btn.disabled=false;btn.textContent='Routenvorschlag erstellen';}}});}
+async function buildAutomaticRoute(opts={}) {
+  const t=activeTrip(),base=activeVersion();if(!t||!base)throw new Error('Keine aktive Reise.');
+  const list=JSON.parse(JSON.stringify(t.wishlist||[]));if(!list.length)throw new Error('Wähle zuerst mindestens ein Ziel aus.');
+  const options={...t.routePreferences,...opts,startDate:base.startDate,endDate:base.endDate,dayStart:state.settings.defaultStart,dayEnd:state.settings.defaultEnd,legs:{}};
+  const nodes=await resolveWishlistNodes(list,opts.onStatus,t,base);
+  let result=Planner.plan(nodes,options);
+  // Re-evaluate feasibility using road routes for every accepted neighbouring pair.
+  // Unavailable road data stays explicitly approximate; NoRoute is never a road.
+  for(let pass=0;pass<nodes.length;pass++) {
+    const missing=[];
+    for(let i=1;i<result.ordered.length;i++) {
+      const a=result.ordered[i-1],b=result.ordered[i],key=a.key+'|'+b.key;
+      if(!options.legs[key])missing.push({a,b,key});
+    }
+    if(!missing.length)break;
+    for(const {a,b,key} of missing) {
+      opts.onStatus?.(`Verbindung prüfen: ${a.name} → ${b.name}`);
+      const estimate=Planner.estimateLeg(a,b,options);
+      if(estimate.mode==='flight')options.legs[key]=estimate;
+      else {
+        try {
+          const route=await Providers.route(a,b,estimate.mode);
+          options.legs[key]={...estimate,...route,mode:estimate.mode,durationMin:Math.ceil(route.durationMin),source:route.source||(route.approx?'Luftlinien-Schätzung':'OSRM')};
+        } catch(e) {options.legs[key]={...estimate,source:'Schätzung: Datenquelle nicht erreichbar'};}
+      }
+    }
+    result=Planner.plan(nodes,options);
+  }
+  if(!result.includedKeys.length)throw new Error(result.deferred[0]?.reason||'Kein Ziel passt in den Zeitraum.');
+  if(!state.trips.includes(t)||!t.versions.includes(base))throw new Error('Die Ausgangsreise wurde während der Planung entfernt.');
+  const v={id:uid('ver'),name:opts.name||'Auto-Route aus Wunschliste',startDate:base.startDate,endDate:base.endDate,days:[],flights:[],connections:[],transfers:[],createdAt:Date.now(),routeMeta:{source:'wishlist',generatorVersion:'1.3.0',sourceVersionId:base.id,sourceVersionName:base.name,generatedAt:Date.now(),wishlistKeys:list.map(x=>x.key),includedKeys:result.includedKeys,deferred:result.deferred.map(x=>({key:x.key,name:x.name,priority:x.priority,reason:x.reason})),missingMust:result.missingMust.map(x=>x.key),flexDays:result.days.filter(d=>!d.events.length).length,options:{...options,legs:undefined,onStatus:undefined}}};
+  const lodgingByDay=new Map();let previousLodging=null,previousLodgingKey=null;
+  for(let di=0;di<result.days.length;di++) {
+    const planned=result.days[di],day={id:uid('day'),date:planned.date,startTime:options.dayStart,endTime:options.dayEnd,stops:[],planningNote:planned.events.length?'':'Freier Tag am letzten Aufenthaltsort – weitere Aktivitäten können ergänzt werden.'};
+    for(const event of planned.events) {
+      if(event.type==='activity') {
+        const stop=makeAutoStop(event.node,Planner.clock(event.start));
+        stop.durationWish=event.end-event.start;stop.durationMin=Math.min(stop.durationMin,stop.durationWish);
+        if(event.part>1)stop.name+=` – Aufenthaltstag ${event.part}`;
+        Object.assign(stop,{wikidata:event.node.item?.wikidata||'',wiki:event.node.item?.wiki||event.node.item?.wikiTag||'',taxonId:event.node.item?.taxonId||null,sourceMeta:{source:event.node.kind==='wildlife'?'iNaturalist':event.node.item?.source||'Entdecken',retrievedAt:event.node.hotspot?.retrievedAt||Date.now(),hotspot:event.node.hotspot||null},planningPlaceholder:true});
+        day.stops.push(stop);
+      } else {
+        const e=event,l=e.leg;
+        const c={id:uid('conn'),mode:l.mode,title:'Weiterreise',operator:'',number:'',reference:'',from:e.from.name,to:e.to.name,fromLat:e.from.lat,fromLng:e.from.lng,toLat:e.to.lat,toLng:e.to.lng,fromWishlistKey:e.from.key,toWishlistKey:e.to.key,departDate:day.date,arriveDate:day.date,departTime:Planner.clock(e.start),arriveTime:Planner.clock(e.end),departureBuffer:l.departureBuffer||0,arrivalBuffer:l.arrivalBuffer||0,durationMin:e.end-e.start,distanceKm:l.distanceKm,geometry:l.geometry||null,approx:!!l.approx,source:l.source,drivingMin:l.drivingMin||0,notes:`${l.source||'Planungsschätzung'}. ${l.breakMin?`${l.breakMin} Minuten Fahrtpause enthalten. `:''}${l.mode==='flight'?'Vorgeschlagenes Verkehrsmittel; Flugverfügbarkeit, Flughäfen und lokale Zeiten prüfen.':'Fahrzeug und befahrbare Strecke prüfen.'}`,planningPlaceholder:true,timeEstimated:true,openIssues:[]};
+        v.connections.push(c);
+        if(l.mode==='flight')c.autoTransfers={before:l.transferBefore,after:l.transferAfter,dayIndex:di};
+      }
+    }
+    if(di<result.days.length-1&&planned.location) {
+      const sameLodging=previousLodging&&previousLodgingKey===planned.location.key;
+      const hotel=sameLodging?previousLodging:makeAutoAccommodation(planned.location,day,addDays(day.date,1));
+      hotel.accommodation.checkOutDate=addDays(day.date,1);
+      const last=planned.events.at(-1),checkIn=Math.max(15*60,(last?.blockEnd??last?.end??15*60));
+      if(!sameLodging){hotel.fixedStart=Planner.clock(Math.min(checkIn,timeToMin(day.endTime)-20));hotel.accommodation.checkInTime=hotel.fixedStart;hotel.openIssues=[];day.stops.push(hotel);}
+      lodgingByDay.set(di,hotel);previousLodging=hotel;previousLodgingKey=planned.location.key;
+    }
+    v.days.push(day);
+  }
+  for(const c of v.connections)if(c.autoTransfers) {
+    const di=c.autoTransfers.dayIndex;
+    addAutoTransfers(v,c,lodgingByDay.get(di-1)||{id:'',name:c.from,lat:c.fromLat,lng:c.fromLng},lodgingByDay.get(di)||{id:'',name:c.to,lat:c.toLat,lng:c.toLng});
+    delete c.autoTransfers;
+  }
+  const first=result.ordered[0],last=result.ordered.at(-1);
+  const arrival={id:uid('conn'),mode:'other',title:'Anreise',from:'Startort (offen)',to:first.name,departDate:v.startDate,departTime:'',arriveDate:v.startDate,arriveTime:options.arrivalTime||'10:00',departureBuffer:0,arrivalBuffer:30,planningPlaceholder:true,timeEstimated:true,openIssues:[]};
+  const departure={id:uid('conn'),mode:'other',title:'Abreise',from:last.name,to:'Zielort (offen)',departDate:v.endDate,departTime:options.departureTime||'18:00',arriveDate:v.endDate,arriveTime:'',departureBuffer:30,arrivalBuffer:0,planningPlaceholder:true,timeEstimated:true,openIssues:[]};
+  v.connections.unshift(arrival);v.connections.push(departure);
+  // Boundary transfers remain even on a day trip without an overnight stay.
+  const boundaryTransfer=(c,direction,lodging,node)=>({id:uid('transfer'),sourceRef:`connection:${c.id}`,toStopId:lodging?.id||'',transferType:direction,date:direction==='to_lodging'?c.arriveDate:c.departDate,fromName:direction==='to_lodging'?'Ankunftspunkt (offen)':lodging?.name||node.name,toName:direction==='to_lodging'?lodging?.name||node.name:'Abfahrtsort (offen)',fromLat:direction==='to_airport'?node.lat:null,fromLng:direction==='to_airport'?node.lng:null,toLat:direction==='to_lodging'?node.lat:null,toLng:direction==='to_lodging'?node.lng:null,mode:'transit',durationMin:45,extraBufferMin:10,distanceKm:0,approx:true,planningPlaceholder:true,timeEstimated:true,openIssues:[]});
+  v.transfers.push(boundaryTransfer(arrival,'to_lodging',lodgingByDay.get(0),first));
+  v.transfers.push(boundaryTransfer(departure,'to_airport',lodgingByDay.get(result.days.length-2),last));
+  const conflicts=v.days.flatMap(day=>computeDay(v,day).conflicts.map(message=>`${day.date}: ${message}`));
+  if(conflicts.length)throw new Error(`Ankunft, Abfahrt oder Tageszeiten passen nicht zum Entwurf. Bitte Zeitfenster anpassen. ${conflicts[0]}`);
+  t.routePreferences={startKey:options.startKey||'',endKey:options.endKey||'',roadMode:options.roadMode||'rentalcar',allowFlights:options.allowFlights!==false,maxDriveMin:options.maxDriveMin||360,arrivalTime:options.arrivalTime||'10:00',departureTime:options.departureTime||'18:00'};
+  t.versions.push(v);t.selectedVersionId=v.id;persistSoon();return v;
+}
+function autoRouteModal() {
+  const t=activeTrip(),v=activeVersion(),list=t?.wishlist||[];if(!t||!v||!list.length){toast('Wähle zuerst Städte, Highlights oder Tiere aus.');return;}
+  const pref=t.routePreferences||{},select=(selected)=>`<option value="">Automatisch</option>${list.filter(x=>x.kind!=='wildlife'||Planner.hasLocation(x)).map(x=>`<option value="${esc(x.key)}" ${x.key===selected?'selected':''}>${esc(x.name)}</option>`).join('')}`;
+  showModal(`<h2>Routenvorschlag erstellen</h2><p class="lead">Aufenthalte, Fahrten, Pausen und Übernachtungen werden gemeinsam auf die verfügbaren Tage verteilt. Deine bisherige Version bleibt erhalten.</p><div class="formgrid"><label>Name der neuen Version<input id="mAutoRouteName" value="Auto-Route aus Wunschliste"></label><label>Startziel<select id="mAutoStart">${select(pref.startKey)}</select></label><label>Letztes Ziel<select id="mAutoEnd">${select(pref.endKey)}</select></label><label>Fahrzeug<select id="mAutoMode">${['rentalcar','camper','car'].map(k=>`<option value="${k}" ${(pref.roadMode||'rentalcar')===k?'selected':''}>${MODES[k]}</option>`).join('')}</select></label><label>Höchstens Fahrstunden je Tag<input id="mAutoDrive" type="number" min="1" max="10" value="${(pref.maxDriveMin||360)/60}"></label><label>Ankunft am ersten Tag (Entwurf)<input id="mAutoArrival" type="time" value="${esc(pref.arrivalTime||'10:00')}"></label><label>Abfahrt am letzten Tag (Entwurf)<input id="mAutoDeparture" type="time" value="${esc(pref.departureTime||'18:00')}"></label></div><div class="formgrid one"><label class="checkline"><input id="mAutoFlights" type="checkbox" ${pref.allowFlights!==false?'checked':''}> Für große Entfernungen Flüge vorschlagen</label><label class="checkline"><input id="mAutoIncludeOptional" type="checkbox" checked> Optionale Ziele einplanen, soweit sie passen</label></div><p class="tiny">Flugverfügbarkeit und Ortszeiten sind offen. Bestehende Buchungen werden in dieser neuen Variante nicht übernommen; vergleiche die Variante anschließend mit „${esc(v.name)}“.</p><div class="warnline">⚠ Nicht passende Wünsche bleiben mit Begründung sichtbar. Fehlende Muss-Ziele werden gesondert markiert.</div><div id="autoRouteStatus" class="tiny"></div><div class="actions"><button data-close-modal>Abbrechen</button><button id="buildAutoRouteBtn" class="primary">Routenvorschlag erstellen</button></div>`,()=>{
+    $('#buildAutoRouteBtn').onclick=async()=>{
+      const btn=$('#buildAutoRouteBtn'),status=$('#autoRouteStatus'),settings={name:$('#mAutoRouteName').value.trim()||'Auto-Route aus Wunschliste',startKey:$('#mAutoStart').value,endKey:$('#mAutoEnd').value,roadMode:$('#mAutoMode').value,allowFlights:$('#mAutoFlights').checked,maxDriveMin:+$('#mAutoDrive').value*60,arrivalTime:$('#mAutoArrival').value,departureTime:$('#mAutoDeparture').value,includeOptional:$('#mAutoIncludeOptional').checked,onStatus:m=>{status.textContent=m;}};
+      if(settings.startKey&&settings.startKey===settings.endKey){status.textContent='Für eine Rundreise zunächst verschiedene Start- und Endziele wählen und die Rückfahrt anschließend ergänzen.';return;}
+      if(settings.maxDriveMin<60||settings.maxDriveMin>600||!settings.arrivalTime||!settings.departureTime){status.textContent='Bitte gültige Fahrstunden und Zeiten eintragen.';return;}
+      btn.disabled=true;btn.textContent='Plant …';
+      try {const nv=await buildAutomaticRoute(settings);closeModal();renderAll();switchView('plan');toast(nv.routeMeta.missingMust.length?'Entwurf erstellt; nicht passende Muss-Ziele prüfen.':'Routenvorschlag erstellt.');}
+      catch(e){status.textContent=e.message;btn.disabled=false;btn.textContent='Routenvorschlag erstellen';}
+    };
+  });
+}
 
 function versionConnections(v=activeVersion()){
   const legacy=(v?.flights||[]).map(f=>({id:f.id,sourceRef:`flight:${f.id}`,mode:'flight',title:f.number||'Flug',operator:f.airline||'',number:f.number||'',from:f.from,to:f.to,departDate:f.departDate,departTime:f.departTime,arriveDate:f.arriveDate,arriveTime:f.arriveTime,departureBuffer:+(f.departureBuffer??state.settings.departureBuffer)||0,arrivalBuffer:+(f.arrivalBuffer??state.settings.arrivalBuffer)||0,notes:f.notes||'',legacyFlight:true}));
@@ -430,6 +723,8 @@ function dayConstraints(v,day){
   let windows=[{start:dayStart,end:dayEnd}],notes=[];
   const transfers=v.transfers||[];
   for(const c of versionConnections(v)){
+    const firstDate=c.departDate||c.arriveDate,lastDate=c.arriveDate||c.departDate;
+    if(!firstDate||!lastDate||day.date<firstDate||day.date>lastDate)continue;
     const src=c.sourceRef;
     const trArrival=transfers.find(t=>(t.sourceRef||(t.flightId?`flight:${t.flightId}`:''))===src&&t.transferType!=='to_airport'&&t.date===day.date);
     const trDeparture=transfers.find(t=>(t.sourceRef||(t.flightId?`flight:${t.flightId}`:''))===src&&t.transferType==='to_airport'&&t.date===day.date);
@@ -453,32 +748,42 @@ function dayConstraints(v,day){
   const available=windows.reduce((sum,w)=>sum+(w.end-w.start),0);
   return{start:windows[0]?.start??dayStart,end:windows[windows.length-1]?.end??dayStart,dayStart,dayEnd,windows,available,notes};
 }
-function computeDay(v,day){
-  const c=dayConstraints(v,day);let cur=c.windows[0]?.start??c.dayStart,km=0,travel=0,visit=0;const rows=[];
-  for(let i=0;i<day.stops.length;i++){
-    const s=day.stops[i];let requested=cur;if(s.fixedStart){const f=timeToMin(s.fixedStart);if(f!=null)requested=Math.max(requested,f)}
-    const dur=+(s.durationWish||s.durationMin||0),slot=fitWindow(c.windows,requested,dur),arr=slot.start,dep=slot.end;visit+=dur;rows.push({stop:s,arrival:arr,departure:dep,overflow:slot.overflow});cur=dep;
-    if(s.routeToNext&&i<day.stops.length-1){const legDur=+(s.routeToNext.durationMin||0),legSlot=fitWindow(c.windows,cur,legDur);travel+=legDur;km+=s.routeToNext.distanceKm||0;cur=legSlot.end;}
+function computeDay(v,day) {
+  const c=dayConstraints(v,day);let cur=c.windows[0]?.start??c.dayStart,km=0,travel=0,visit=0,overrun=0;const rows=[],conflicts=[];
+  for(let i=0;i<day.stops.length;i++) {
+    const s=day.stops[i],dur=Math.max(0,+(s.durationWish??s.durationMin??0)),fixed=timeToMin(s.fixedStart);
+    const slot=fixed===null?fitWindow(c.windows,cur,dur):{start:fixed,end:fixed+dur};
+    const fits=c.windows.some(w=>slot.start>=w.start&&slot.end<=w.end),overlap=slot.start<cur;
+    const overflow=!!slot.overflow||!fits||overlap;
+    if(overflow){conflicts.push(`${s.name}: ${overlap?'Reihenfolge oder Fixzeit kollidiert':'kein passendes Zeitfenster'}`);overrun+=Math.max(1,slot.end-c.dayEnd,cur-slot.start);}
+    rows.push({stop:s,arrival:slot.start,departure:slot.end,overflow});visit+=dur;cur=Math.max(cur,slot.end);
+    if(s.routeToNext&&i<day.stops.length-1) {
+      const legDur=Math.max(0,+s.routeToNext.durationMin||0),legSlot=fitWindow(c.windows,cur,legDur);travel+=legDur;km+=s.routeToNext.distanceKm||0;cur=legSlot.end;
+      if(legSlot.overflow){conflicts.push(`Weiterreise nach ${s.name} passt nicht ins Zeitfenster`);overrun+=Math.max(1,cur-c.dayEnd);}
+    }
   }
-  const used=visit+travel,buffer=c.available-used;
-  return{...c,rows,finish:cur,km,travel,visit,buffer,used};
+  const used=visit+travel,buffer=conflicts.length?-Math.max(overrun,used-c.available,1):c.available-used;
+  return {...c,rows,finish:cur,km,travel,visit,buffer,used,conflicts};
 }
 function renderPlanner(){
   const t=activeTrip(),v=activeVersion(),sum=$('#planSummary'),box=$('#daysTimeline');if(!t||!v){sum.innerHTML='';box.innerHTML='<div class="card">Keine Reiseversion ausgewählt.</div>';return;}
   const m=versionMetrics(v),issues=planningIssueCount(v);sum.innerHTML=`<div class="summarybox"><b>${v.days.length}</b><small>Tage</small></div><div class="summarybox"><b>${m.stops}</b><small>Stopps</small></div><div class="summarybox"><b>${Math.round(m.km)}</b><small>km</small></div><div class="summarybox"><b>${durText(m.travel)}</b><small>Fahrt</small></div><div class="summarybox ${issues?'issuesummary':''}"><b>${issues?'⚠ '+issues:'✓ 0'}</b><small>offene Punkte</small></div>`;
-  box.innerHTML=v.routeMeta?.source==='wishlist'?`<div class="card autoroutecard"><div class="sectiontitle"><span>✨ Automatischer Routenvorschlag</span><span>${(v.routeMeta.wishlistKeys||[]).length} Wünsche</span></div><p class="tiny">Dieser Entwurf wurde aus deiner Entdecken-Auswahl, Prioritäten und geografischer Nähe aufgebaut.${v.routeMeta.flexDays?` ${v.routeMeta.flexDays} Reisetag${v.routeMeta.flexDays===1?' ist':'e sind'} bewusst noch flexibel.`:''}</p></div>`:'';if(v.routeMeta?.deferred?.length)box.insertAdjacentHTML('beforeend',`<div class="card routeissuescard"><div class="sectiontitle"><span>⚠ Nicht eingeplante Auswahl</span><span>${v.routeMeta.deferred.length}</span></div><p class="tiny">Diese Wünsche bleiben in deiner Auswahl, konnten aber im ersten automatischen Entwurf noch nicht sinnvoll untergebracht werden.</p>${v.routeMeta.deferred.map(x=>`<div class="deferreditem">${esc(x.name)} <small>${esc(x.reason||'offen')}</small></div>`).join('')}</div>`);v.days.forEach((day,di)=>{const comp=computeDay(v,day),el=document.createElement('div');el.className='daycard';const connections=versionConnections(v).filter(f=>f.departDate===day.date||f.arriveDate===day.date),transfers=(v.transfers||[]).filter(x=>x.date===day.date);el.innerHTML=`
+  box.innerHTML=v.routeMeta?.source==='wishlist'?`<div class="card autoroutecard"><div class="sectiontitle"><span>✨ Automatischer Routenvorschlag</span><span>${(v.routeMeta.wishlistKeys||[]).length} Wünsche</span></div><p class="tiny">Dieser Entwurf wurde aus deiner Entdecken-Auswahl, Prioritäten und geografischer Nähe aufgebaut.${v.routeMeta.flexDays?` ${v.routeMeta.flexDays} Reisetag${v.routeMeta.flexDays===1?' ist':'e sind'} bewusst noch flexibel.`:''}</p></div>`:'';if(v.routeMeta?.deferred?.length)box.insertAdjacentHTML('beforeend',`<div class="card routeissuescard"><div class="sectiontitle"><span>⚠ Nicht eingeplante Auswahl</span><span>${v.routeMeta.deferred.length}</span></div><p class="tiny">Diese Wünsche bleiben in deiner Auswahl, konnten aber im ersten automatischen Entwurf noch nicht sinnvoll untergebracht werden.</p>${v.routeMeta.deferred.map(x=>`<div class="deferreditem">${x.priority==='must'?'‼ Muss-Ziel: ':''}${esc(x.name)} <small>${esc(x.reason||'offen')}</small></div>`).join('')}</div>`);v.days.forEach((day,di)=>{const comp=computeDay(v,day),el=document.createElement('div');el.className='daycard';const connections=versionConnections(v).filter(f=>f.departDate===day.date||f.arriveDate===day.date),transfers=(v.transfers||[]).filter(x=>x.date===day.date);el.innerHTML=`
     <div class="dayhead"><div class="daydate"><span class="daycolor" style="background:${DAY_COLORS[di%DAY_COLORS.length]}"></span><div><h3>Tag ${di+1} · ${fmtShortDate(day.date)}</h3><p>${comp.windows.length?comp.windows.map(w=>`${minToTime(w.start)}–${minToTime(w.end)}`).join(' / '):'kein freies Zeitfenster'} · ${durText(comp.available)} frei · ${comp.buffer>=0?`${durText(comp.buffer)} Puffer`:`${durText(-comp.buffer)} überplant`}</p></div></div><button data-day-toggle="${day.id}">⌄</button></div>
-    <div class="daybody" id="body_${day.id}"><div class="daytools"><button data-day-time="${day.id}">⏱ Tageszeit</button><button data-day-add="${day.id}">+ Stopp</button><button data-day-accommodation="${day.id}">🛏 Unterkunft</button><button data-city-tour="${day.id}">🏙 Stadttour</button><button data-route-day="${day.id}">↻ Strecken</button></div>
+    <div class="daybody" id="body_${day.id}" ${day.collapsed?'hidden':''}><div class="daytools"><button data-day-time="${day.id}">⏱ Tageszeit</button><button data-day-add="${day.id}">+ Stopp</button><button data-day-accommodation="${day.id}">🛏 Unterkunft</button><button data-city-tour="${day.id}">🏙 Stadttour</button><button data-route-day="${day.id}">↻ Strecken</button></div>
       ${comp.notes.length?`<div class="warnline">🧭 ${comp.notes.join(' · ')}</div>`:''}
+      ${accommodationsForDate(v,day.date).length?`<p class="lodgingmeta">🛏 Übernachtung: ${accommodationsForDate(v,day.date).map(x=>esc(x.stop.name)).join(' / ')}</p>`:''}
+      ${day.planningNote?`<p class="tiny">${esc(day.planningNote)}</p>`:''}
+      ${comp.conflicts.length?`<div class="warnline errorline">⚠ ${comp.conflicts.map(esc).join(' · ')}</div>`:''}
       ${connections.map(c=>connectionHtml(c)).join('')}
       ${transfers.map(x=>transferHtml(x)).join('')}
       <div>${comp.rows.map((r,i)=>stopHtml(day,r,i,comp.rows.length,di)).join('')}</div>
       <div class="${comp.buffer<0?'warnline errorline':'warnline goodline'}">${comp.buffer<0?`⚠ Tag ist um ${durText(-comp.buffer)} überplant.`:`✓ Verbleibender Puffer: ${durText(comp.buffer)}.`} · ${kmText(comp.km)} · ${durText(comp.travel)} Transfer · ${durText(comp.visit)} Stopps</div>
     </div>`;box.appendChild(el);});
 }
-function connectionHtml(c){const issues=objectOpenIssues(c,'connection');return `<div class="stop flightcard ${issues.length?'hasissues':''}"><div class="stoprow"><div class="stopicon">${esc((MODES[c.mode]||'•').split(' ')[0])}</div><div><h4>${issues.length?'⚠ ':''}${esc(c.number||c.title||'Verbindung')} · ${esc(c.from)} → ${esc(c.to)}</h4><div class="stopmeta">${MODES[c.mode]||esc(c.mode)} · ${fmtShortDate(c.departDate)} ${esc(c.departTime)} → ${fmtShortDate(c.arriveDate)} ${esc(c.arriveTime)}<br>Puffer: ${durText(c.departureBuffer||0)} vor Abfahrt · ${durText(c.arrivalBuffer||0)} nach Ankunft${c.notes?`<br>${esc(c.notes)}`:''}</div>${issueBadgeHtml(issues)}</div><div class="stopactions"><button data-connection-transfer="${esc(c.sourceRef)}" title="Transfer anlegen">↔</button><button ${c.legacyFlight?`data-edit-flight="${c.id}"`:`data-edit-connection="${c.id}"`}>✎</button></div></div></div>`}
+function connectionHtml(c){const issues=objectOpenIssues(c,'connection');return `<div class="stop flightcard ${issues.length?'hasissues':''}"><div class="stoprow"><div class="stopicon">${esc((MODES[c.mode]||'•').split(' ')[0])}</div><div><h4>${issues.length?'⚠ ':''}${esc(c.number||c.title||'Verbindung')} · ${esc(c.from)} → ${esc(c.to)}</h4><div class="stopmeta">${MODES[c.mode]||esc(c.mode)} · ${fmtShortDate(c.departDate)} ${esc(c.departTime)} → ${fmtShortDate(c.arriveDate)} ${esc(c.arriveTime)}${c.distanceKm?`<br>${kmText(c.distanceKm)} · ${durText(c.durationMin||0)}${c.approx?' · geschätzt':''}`:''}<br>Puffer: ${durText(c.departureBuffer||0)} vor Abfahrt · ${durText(c.arrivalBuffer||0)} nach Ankunft${c.notes?`<br>${esc(c.notes)}`:''}</div>${issueBadgeHtml(issues)}</div><div class="stopactions"><button data-connection-transfer="${esc(c.sourceRef)}" title="Transfer anlegen">↔</button><button ${c.legacyFlight?`data-edit-flight="${c.id}"`:`data-edit-connection="${c.id}"`}>✎</button></div></div></div>`}
 function transferHtml(x){const extra=+x.extraBufferMin||0,total=transferTotalMin(x),issues=objectOpenIssues(x,'transfer');return `<div class="stop transfercard ${issues.length?'hasissues':''}"><div class="stoprow"><div class="stopicon">↔</div><div><h4>${issues.length?'⚠ ':''}${esc(transferLabel(x))} · ${esc(x.fromName||'Start')} → ${esc(x.toName||'Ziel')}</h4><div class="stopmeta">${MODES[x.mode]||esc(x.mode)} · ${kmText(x.distanceKm)} · ${durText(total)} gesamt${extra?` (${durText(x.durationMin)} Fahrt + ${durText(extra)} Zusatzpuffer)`:''}${x.approx?' · ca.':''}${x.provider?`<br>${esc(x.provider)}`:''}${x.notes?`<br>${esc(x.notes)}`:''}</div>${issueBadgeHtml(issues)}</div><button data-edit-transfer="${x.id}">✎</button></div></div>`}
-function stopHtml(day,r,i,count,di){const s=r.stop,leg=s.routeToNext&&i<count-1?s.routeToNext:null,a=s.accommodation,issues=objectOpenIssues(s,a?'accommodation':'stop');return `<div class="stop ${a?'accommodationcard':''} ${issues.length?'hasissues':''}" data-stop="${s.id}"><div class="stoprow"><div class="stopicon">${STOP_ICONS[s.type]||'•'}</div><div><h4>${issues.length?'⚠ ':''}${minToTime(r.arrival)}–${minToTime(r.departure)} · ${esc(s.name)}</h4><div class="stopmeta"><span class="priority ${s.priority}">${priorityText(s.priority)}</span>${durText(s.durationWish||s.durationMin)}${s.openingHours?` · geöffnet: ${esc(s.openingHours)}`:''}${a?`<span class="lodgingmeta">${esc(a.kind||'Unterkunft')} · Check-in ${fmtShortDate(a.checkInDate)}${a.checkInTime?` ${esc(a.checkInTime)}`:''} · Check-out ${fmtShortDate(a.checkOutDate)}${a.checkOutTime?` ${esc(a.checkOutTime)}`:''}${a.address?`<br>${esc(a.address)}`:''}</span>`:''}${s.notes?`<br>${esc(s.notes)}`:''}</div>${issueBadgeHtml(issues)}</div><div class="stopactions"><button data-move-stop="${s.id}" data-dir="-1">↑</button><button data-move-stop="${s.id}" data-dir="1">↓</button><button data-edit-stop="${s.id}">✎</button><button data-delete-stop="${s.id}">×</button></div></div></div>${leg?`<div class="leg"><div class="legline"></div><div>${MODES[s.modeToNext]||s.modeToNext} · ${kmText(leg.distanceKm)} · ${durText(leg.durationMin)}${leg.approx?' · ca.':''}</div></div>`:''}`}
+function stopHtml(day,r,i,count,di){const s=r.stop,leg=s.routeToNext&&i<count-1?s.routeToNext:null,a=s.accommodation,issues=objectOpenIssues(s,a?'accommodation':'stop');return `<div class="stop ${a?'accommodationcard':''} ${issues.length?'hasissues':''}" data-stop="${s.id}"><div class="stoprow"><div class="stopicon">${STOP_ICONS[s.type]||'•'}</div><div><h4>${issues.length?'⚠ ':''}${r.overflow?'⚠ Zeitkonflikt · ':''}${minToTime(r.arrival)}–${minToTime(r.departure)}${r.departure>=1440?' (+Folgetag)':''} · ${esc(s.name)}</h4><div class="stopmeta"><span class="priority ${s.priority}">${priorityText(s.priority)}</span>${durText(s.durationWish||s.durationMin)}${s.openingHours?` · geöffnet: ${esc(s.openingHours)}`:''}${a?`<span class="lodgingmeta">${esc(a.kind||'Unterkunft')} · Check-in ${fmtShortDate(a.checkInDate)}${a.checkInTime?` ${esc(a.checkInTime)}`:''} · Check-out ${fmtShortDate(a.checkOutDate)}${a.checkOutTime?` ${esc(a.checkOutTime)}`:''}${a.address?`<br>${esc(a.address)}`:''}</span>`:''}${s.notes?`<br>${esc(s.notes)}`:''}</div>${issueBadgeHtml(issues)}</div><div class="stopactions"><button data-move-stop="${s.id}" data-dir="-1">↑</button><button data-move-stop="${s.id}" data-dir="1">↓</button><button data-edit-stop="${s.id}">✎</button><button data-delete-stop="${s.id}">×</button></div></div></div>${leg?`<div class="leg"><div class="legline"></div><div>${MODES[s.modeToNext]||s.modeToNext} · ${kmText(leg.distanceKm)} · ${durText(leg.durationMin)}${leg.approx?' · ca.':''}</div></div>`:''}`}
 function priorityText(p){return p==='must'?'MUSS':p==='high'?'HOCH':p==='optional'?'OPTIONAL':'NORMAL'}
 function renderCompare(){
   const t=activeTrip(),a=$('#compareA'),b=$('#compareB');a.innerHTML=b.innerHTML='';if(!t)return;(t.versions||[]).forEach((v,i)=>{for(const sel of[a,b]){const o=document.createElement('option');o.value=v.id;o.textContent=v.name;sel.appendChild(o)}if(i===0)a.value=v.id;if(i===1)b.value=v.id});if(t.versions.length===1)b.value=t.versions[0].id;renderCompareResult();
@@ -513,14 +818,15 @@ function addStopModal(dayId=null,prefill=null){
 }
 function guessStopType(x){const t=`${x.category||''} ${x.type||''}`;if(/hotel|hostel|motel/.test(t))return'hotel';if(/park|nature|forest/.test(t))return'nature';if(/viewpoint/.test(t))return'viewpoint';if(/beach/.test(t))return'beach';if(/restaurant|cafe/.test(t))return'food';if(/city|town/.test(t))return'city';return'sight'}
 function editStopModal(day,stop,isNew=false){
-  const v=activeVersion();showModal(`<h2>${isNew?'Stopp hinzufügen':'Stopp bearbeiten'}</h2><p class="lead">Zeit, Priorität und Planungsdetails festlegen.</p><div class="formgrid"><label>Name<input id="mStopName" value="${esc(stop.name)}"></label><label>Typ<select id="mStopType">${Object.keys(STOP_ICONS).map(k=>`<option value="${k}" ${stop.type===k?'selected':''}>${STOP_ICONS[k]} ${k}</option>`).join('')}</select></label><label>Reisetag<select id="mStopDay">${v.days.map((d,i)=>`<option value="${d.id}" ${d.id===day.id?'selected':''}>Tag ${i+1} · ${fmtShortDate(d.date)}</option>`).join('')}</select></label><label>Priorität<select id="mStopPriority"><option value="must">Muss</option><option value="high">Hoch</option><option value="normal">Normal</option><option value="optional">Optional</option></select></label><label>Mindestdauer (min)<input id="mStopMin" type="number" min="0" value="${stop.durationMin||0}"></label><label>Wunschdauer (min)<input id="mStopWish" type="number" min="0" value="${stop.durationWish||stop.durationMin||0}"></label><label>Fixe Startzeit<input id="mStopFixed" type="time" value="${esc(stop.fixedStart||'')}"></label><label>Weiterreise<select id="mStopMode">${Object.entries(MODES).filter(([k])=>k!=='flight').map(([k,n])=>`<option value="${k}" ${stop.modeToNext===k?'selected':''}>${n}</option>`).join('')}</select></label><label>Breitengrad<input id="mStopLat" type="number" step="any" value="${stop.lat??''}"></label><label>Längengrad<input id="mStopLng" type="number" step="any" value="${stop.lng??''}"></label></div><div class="formgrid one"><label>Öffnungszeiten<input id="mStopOpen" value="${esc(stop.openingHours||'')}" placeholder="z. B. Mo-Su 09:00-18:00"></label><label>Notizen<textarea id="mStopNotes">${esc(stop.notes||'')}</textarea></label></div><div class="actions"><button data-close-modal>Abbrechen</button><button id="lookupHoursBtn">Öffnungszeiten suchen</button><button id="lookupPhotosBtn">Fotos laden</button><button id="saveStopBtn" class="primary">Speichern</button></div><div id="stopLookupStatus" class="tiny" style="margin-top:8px"></div>`,()=>{
+  const savedStop=stop;stop=JSON.parse(JSON.stringify(stop));
+  const v=activeVersion();showModal(`<h2>${isNew?'Stopp hinzufügen':'Stopp bearbeiten'}</h2><p class="lead">Zeit, Priorität und Planungsdetails festlegen.</p><div class="formgrid"><label>Name<input id="mStopName" value="${esc(stop.name)}"></label><label>Typ<select id="mStopType">${Object.keys(STOP_ICONS).map(k=>`<option value="${k}" ${stop.type===k?'selected':''}>${STOP_ICONS[k]} ${k}</option>`).join('')}</select></label><label>Reisetag<select id="mStopDay">${v.days.map((d,i)=>`<option value="${d.id}" ${d.id===day.id?'selected':''}>Tag ${i+1} · ${fmtShortDate(d.date)}</option>`).join('')}</select></label><label>Priorität<select id="mStopPriority"><option value="must">Muss</option><option value="high">Hoch</option><option value="normal">Normal</option><option value="optional">Optional</option></select></label><label>Mindestdauer (min)<input id="mStopMin" type="number" min="0" value="${stop.durationMin||0}"></label><label>Wunschdauer (min)<input id="mStopWish" type="number" min="0" value="${stop.durationWish||stop.durationMin||0}"></label><label>Fixe Startzeit<input id="mStopFixed" type="time" value="${esc(stop.fixedStart||'')}"></label><label>Weiterreise<select id="mStopMode">${Object.entries(MODES).filter(([k])=>k!=='flight').map(([k,n])=>`<option value="${k}" ${stop.modeToNext===k?'selected':''}>${n}</option>`).join('')}</select></label><label>Breitengrad<input id="mStopLat" type="number" step="any" value="${stop.lat??''}"></label><label>Längengrad<input id="mStopLng" type="number" step="any" value="${stop.lng??''}"></label></div><div class="formgrid one"><label>Öffnungszeiten<input id="mStopOpen" value="${esc(stop.openingHours||'')}" placeholder="z. B. Mo-Su 09:00-18:00"></label><label>Notizen<textarea id="mStopNotes">${esc(stop.notes||'')}</textarea></label></div>${planningReviewHtml(stop,'stop')}<div class="actions"><button data-close-modal>Abbrechen</button><button id="lookupHoursBtn">Öffnungszeiten suchen</button><button id="lookupPhotosBtn">Fotos laden</button><button id="saveStopBtn" class="primary">Speichern</button></div><div id="stopLookupStatus" class="tiny" style="margin-top:8px"></div>`,()=>{
     $('#mStopPriority').value=stop.priority||'normal';
-    $('#lookupHoursBtn').onclick=async()=>{const lat=+$('#mStopLat').value,lng=+$('#mStopLng').value;if(!Number.isFinite(lat)||!Number.isFinite(lng)){toast('Koordinaten fehlen.');return}$('#stopLookupStatus').textContent='Öffnungszeiten werden gesucht …';try{const h=await Providers.openingHours(lat,lng);if(h){$('#mStopOpen').value=h;$('#stopLookupStatus').textContent=`Gefunden: ${h}`}else $('#stopLookupStatus').textContent='Keine Öffnungszeiten in OpenStreetMap gefunden.'}catch(e){$('#stopLookupStatus').textContent=e.message}};
-    $('#lookupPhotosBtn').onclick=async()=>{$('#stopLookupStatus').textContent='Verifizierte Fotos werden gesucht …';try{stop.name=$('#mStopName').value.trim()||stop.name;const kind=stop.type==='city'?'city':'poi',detail=await Providers.verifiedPlaceDetails(stop,activeTrip()?.destination||'',kind);stop.images=await Providers.verifiedPhotosForItem(stop,activeTrip()?.destination||'',kind,detail);$('#stopLookupStatus').textContent=stop.images.length?`${stop.images.length} eindeutig zugeordnete(s) Foto(s) gefunden.`:'Kein ausreichend sicher zuordenbares Foto gefunden.'}catch(e){$('#stopLookupStatus').textContent=e.message}};
-    $('#saveStopBtn').onclick=()=>{const target=v.days.find(d=>d.id===$('#mStopDay').value);Object.assign(stop,{name:$('#mStopName').value.trim()||'Unbenannter Stopp',type:$('#mStopType').value,priority:$('#mStopPriority').value,durationMin:+$('#mStopMin').value||0,durationWish:+$('#mStopWish').value||0,fixedStart:$('#mStopFixed').value,modeToNext:$('#mStopMode').value,lat:$('#mStopLat').value===''?null:+$('#mStopLat').value,lng:$('#mStopLng').value===''?null:+$('#mStopLng').value,openingHours:$('#mStopOpen').value.trim(),notes:$('#mStopNotes').value.trim(),routeToNext:null});if(isNew){target.stops.push(stop)}else if(target.id!==day.id){day.stops=day.stops.filter(s=>s.id!==stop.id);target.stops.push(stop)}persistSoon();closeModal();renderAll();};
+    $('#lookupHoursBtn').onclick=async()=>{const lat=Planner.coordinate($('#mStopLat').value,90),lng=Planner.coordinate($('#mStopLng').value,180);if(lat===null||lng===null){toast('Koordinaten fehlen.');return}$('#stopLookupStatus').textContent='Öffnungszeiten werden gesucht …';try{const h=await Providers.openingHours(lat,lng);if(h){$('#mStopOpen').value=h;$('#stopLookupStatus').textContent=`Gefunden: ${h}`}else $('#stopLookupStatus').textContent='Keine Öffnungszeiten in OpenStreetMap gefunden.'}catch(e){$('#stopLookupStatus').textContent=e.message}};
+    $('#lookupPhotosBtn').onclick=async()=>{$('#stopLookupStatus').textContent='Verifizierte Fotos werden gesucht …';try{stop.name=$('#mStopName').value.trim()||stop.name;const kind=stop.taxonId?'wildlife':stop.type==='city'?'city':'poi',detail=await Providers.verifiedPlaceDetails(stop,activeTrip()?.destination||'',kind);stop.images=await Providers.verifiedPhotosForItem(stop,activeTrip()?.destination||'',kind,detail);$('#stopLookupStatus').textContent=stop.images.length?`${stop.images.length} eindeutig zugeordnete(s) Foto(s) gefunden.`:'Kein ausreichend sicher zuordenbares Foto gefunden.'}catch(e){$('#stopLookupStatus').textContent=e.message}};
+    $('#saveStopBtn').onclick=()=>{const target=v.days.find(d=>d.id===$('#mStopDay').value);if(!target||+$('#mStopMin').value<0||+$('#mStopWish').value<0){toast('Gültige Tages- und Zeitangaben wählen.');return;}Object.assign(stop,{name:$('#mStopName').value.trim()||'Unbenannter Stopp',type:$('#mStopType').value,priority:$('#mStopPriority').value,durationMin:+$('#mStopMin').value||0,durationWish:+$('#mStopWish').value||0,fixedStart:$('#mStopFixed').value,modeToNext:$('#mStopMode').value,lat:Planner.coordinate($('#mStopLat').value,90),lng:Planner.coordinate($('#mStopLng').value,180),openingHours:$('#mStopOpen').value.trim(),notes:$('#mStopNotes').value.trim(),routeToNext:null});if($('#mPlanningChecked')?.checked){stop.openIssues=[];stop.planningPlaceholder=false;}if(!isNew){Object.assign(savedStop,stop);stop=savedStop;}invalidateStopRoutes(v,stop);if(isNew){target.stops.push(stop)}else if(target.id!==day.id){day.stops=day.stops.filter(s=>s.id!==stop.id);target.stops.push(stop)}persistSoon();closeModal();renderAll();};
   });
 }
-function dayTimeModal(day){showModal(`<h2>Tageszeit</h2><p class="lead">Die effektive verfügbare Zeit wird zusätzlich durch Langstrecken-Verbindungen und Transfers begrenzt.</p><div class="formgrid"><label>Start<input id="mDayStart" type="time" value="${day.startTime}"></label><label>Ende<input id="mDayEnd" type="time" value="${day.endTime}"></label></div><div class="actions"><button data-close-modal>Abbrechen</button><button id="saveDayTime" class="primary">Speichern</button></div>`,()=>{$('#saveDayTime').onclick=()=>{day.startTime=$('#mDayStart').value;day.endTime=$('#mDayEnd').value;persistSoon();closeModal();renderPlanner()}})}
+function dayTimeModal(day){showModal(`<h2>Tageszeit</h2><p class="lead">Die effektive verfügbare Zeit wird zusätzlich durch Langstrecken-Verbindungen und Transfers begrenzt.</p><div class="formgrid"><label>Start<input id="mDayStart" type="time" value="${day.startTime}"></label><label>Ende<input id="mDayEnd" type="time" value="${day.endTime}"></label></div><div class="actions"><button data-close-modal>Abbrechen</button><button id="saveDayTime" class="primary">Speichern</button></div>`,()=>{$('#saveDayTime').onclick=()=>{const start=timeToMin($('#mDayStart').value),end=timeToMin($('#mDayEnd').value);if(start===null||end===null||end<=start){toast('Das Tagesende muss nach dem Start liegen.');return;}day.startTime=$('#mDayStart').value;day.endTime=$('#mDayEnd').value;persistSoon();closeModal();renderPlanner()}})}
 function flightModal(flight=null){
   const v=activeVersion();if(!v)return;const f=flight||{id:uid('flight'),number:'',airline:'',from:'',to:'',departDate:v.startDate,departTime:'',arriveDate:v.startDate,arriveTime:'',arrivalBuffer:state.settings.arrivalBuffer,departureBuffer:state.settings.departureBuffer,notes:''};
   showModal(`<h2>${flight?'Flug bearbeiten':'Flug hinzufügen'}</h2><p class="lead">Flugnummer kann kostenlos zur Erkennung der Route genutzt werden. Die konkreten zukünftigen Zeiten werden manuell eingetragen.</p><div class="formgrid"><label>Flugnummer<input id="mFlightNo" value="${esc(f.number)}" placeholder="z. B. QF9"></label><label>Airline<input id="mAirline" value="${esc(f.airline||'')}"></label></div><button id="lookupFlightBtn">Flugroute erkennen</button><div class="formgrid"><label>Von<input id="mFlightFrom" value="${esc(f.from)}"></label><label>Nach<input id="mFlightTo" value="${esc(f.to)}"></label><label>Abflugdatum<input id="mFlightDepartDate" type="date" value="${f.departDate}"></label><label>Abflugzeit lokal<input id="mFlightDepartTime" type="time" value="${f.departTime}"></label><label>Ankunftsdatum<input id="mFlightArriveDate" type="date" value="${f.arriveDate}"></label><label>Ankunftszeit lokal<input id="mFlightArriveTime" type="time" value="${f.arriveTime}"></label><label>Puffer nach Ankunft (min)<input id="mArrBuffer" type="number" value="${f.arrivalBuffer}"></label><label>Puffer vor Abflug (min)<input id="mDepBuffer" type="number" value="${f.departureBuffer}"></label></div><div class="formgrid one"><label>Notiz<textarea id="mFlightNotes">${esc(f.notes||'')}</textarea></label></div><div id="flightLookupStatus" class="tiny"></div><div class="actions"><button data-close-modal>Abbrechen</button>${flight?'<button id="deleteFlightBtn" class="danger">Löschen</button>':''}<button id="saveFlightBtn" class="primary">Speichern</button></div>`,()=>{
@@ -538,17 +844,20 @@ async function discoverAll(){
     toast(ok===3?'Inspiration erfolgreich geladen.':ok>0?`${ok} von 3 Bereichen wurden geladen.`:'Inspiration konnte nicht geladen werden.');
   }finally{btn.classList.remove('loading');btn.disabled=false;btn.textContent=old}
 }
-async function loadCities(){
+async function loadCities(force=false){
   const t=activeTrip();if(!t)return false;const box=$('#citySuggestions');box.className='suggestions scrollsuggestions';box.innerHTML='<div class="suggestion">Städte werden geladen …</div>';
-  try{const data=await Providers.cities(t.country||t.destination);renderCitySuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Städte:</b> ${esc(e.message)}</div>`;return false}
+  if(force===true)delete state.cache.cities[`cities:v6:${normalizeName(t.country||t.destination)}`];
+  try{const data=await Providers.cities(t.country||t.destination);if(activeTrip()?.id===t.id)renderCitySuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Städte:</b> ${esc(e.message)}</div>`;return false}
 }
-async function loadAttractions(){
+async function loadAttractions(force=false){
   const t=activeTrip();if(!t)return false;const box=$('#poiSuggestions');box.className='suggestions';box.innerHTML='<div class="suggestion">Sehenswürdigkeiten werden geladen …</div>';
-  try{const data=await Providers.attractions(t.country||t.destination);renderAttractionSuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Sehenswürdigkeiten:</b> ${esc(e.message)}</div>`;return false}
+  if(force===true)delete state.cache.wikidata[`attr:v6:${normalizeName(t.country||t.destination)}`];
+  try{const data=await Providers.attractions(t.country||t.destination);if(activeTrip()?.id===t.id)renderAttractionSuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Sehenswürdigkeiten:</b> ${esc(e.message)}</div>`;return false}
 }
-async function loadWildlife(){
+async function loadWildlife(force=false){
   const t=activeTrip(),v=activeVersion();if(!t)return false;const box=$('#wildSuggestions');box.className='suggestions';box.innerHTML='<div class="suggestion">Wildlife wird geladen …</div>';const month=v?.startDate?new Date(`${v.startDate}T12:00:00`).getMonth()+1:0;
-  try{const data=await Providers.wildlife(t.destination,month);renderWildlifeSuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Wildlife:</b> ${esc(e.message)}</div>`;return false}
+  if(force===true)delete state.cache.wildlife[`wild:v3:${normalizeName(t.destination)}:${month}`];
+  try{const data=await Providers.wildlife(t.destination,month);if(activeTrip()?.id===t.id&&activeVersion()?.id===v.id)renderWildlifeSuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Wildlife:</b> ${esc(e.message)}</div>`;return false}
 }
 function addSuggestion(payload){const v=activeVersion();if(!v)return;if(payload.kind==='poi'){const day=v.days[0];const stop={id:uid('stop'),name:payload.name,lat:payload.lat,lng:payload.lng,type:'sight',priority:'high',durationMin:45,durationWish:90,notes:'Automatisch vorgeschlagenes Highlight',openingHours:'',fixedStart:'',images:[],tags:['highlight'],wildlife:[],modeToNext:'car',routeToNext:null};closeModal();editStopModal(day,stop,true)}}
 function chooseTargetSpecies(x){
@@ -569,10 +878,11 @@ function addCitySuggestion(city){
 async function openSuggestionDetail(kind,item,context=''){
   const icon=kind==='wildlife'?'🐾':kind==='city'?'🏙':'★';
   showModal(`<div class="detailtitle"><span class="detailtype">${icon} ${kind==='wildlife'?'Wildlife':kind==='city'?'Stadt':'Sehenswürdigkeit'}</span><h2>${esc(item.name||item.title||'Details')}</h2><p class="lead">Verifizierte Kurzinfo und Bilder werden geladen …</p></div><div id="detailBody"></div><div class="actions detailactions"><button data-close-modal>Schließen</button></div>`);
-  const body=$('#detailBody'),actions=$('#modalContent .detailactions');
+  const generation=modalGeneration,body=$('#detailBody'),actions=$('#modalContent .detailactions');
   try{
     if(kind==='wildlife'){
       const photos=(await Providers.verifiedPhotosForItem(item,context,'wildlife')).map(x=>x.url),wish=getWishlistEntry('wildlife',item);
+      if(generation!==modalGeneration)return;
       body.innerHTML=`${detailGalleryHtml(photos)}<div class="detailfacts"><span>🧬 ${esc(item.scientific||'Art')}</span><span>📍 ${Number(item.count||0).toLocaleString('de-DE')} Beobachtungen</span><span>✓ Bilder exakt über iNaturalist-Taxon-ID ${esc(item.taxonId||'')}</span></div><div class="card detailcard"><h3>Was du wissen solltest</h3><p>Die Art und ihre Bilder werden über dieselbe iNaturalist-Taxon-ID verknüpft. Dadurch werden keine Bilder nur anhand eines ähnlich klingenden Tiernamens zugemischt.</p><p>Die Beobachtungszahl beschreibt die vorhandenen Meldungen im Reiseziel bzw. Reisemonat und ist keine garantierte Sichtungswahrscheinlichkeit.</p></div>`;
       actions.insertAdjacentHTML('beforeend',`<button id="detailWishBtn">${wish?'✓ In Auswahl':'Für Route auswählen'}</button><button id="detailHotspotBtn" class="primary">Hotspots ansehen</button>`);
       $('#detailWishBtn').onclick=()=>{const current=getWishlistEntry('wildlife',item);setWishlistSelection('wildlife',item,!current,current?.priority||'high');closeModal();openSuggestionDetail('wildlife',item,context)};
@@ -583,7 +893,8 @@ async function openSuggestionDetail(kind,item,context=''){
     const summary=detail?.summary||item.summary||'';
     const kindLabel=kind==='city'?'Stadt':(item.highlightType||'Sehenswürdigkeit');
     const sourceLabel=detail?.verified?'Wikipedia/Wikidata – eindeutig zugeordnet':(summary?'OpenStreetMap-Beschreibung':'Keine eindeutig zuordenbare Textquelle gefunden');
-    body.innerHTML=`${detailGalleryHtml(photos)}<div class="detailfacts"><span>📌 ${esc(kindLabel)}</span>${context?`<span>🌍 ${esc(context)}</span>`:''}${Number.isFinite(+item.lat)&&Number.isFinite(+item.lng)?`<span>⌖ ${(+item.lat).toFixed(3)}, ${(+item.lng).toFixed(3)}</span>`:''}<span>✓ ${esc(sourceLabel)}</span></div><div class="card detailcard"><h3>Kurzinfo</h3>${summary?`<p>${esc(summary)}</p>`:`<p>Für diesen Eintrag wurde keine Wikipedia-Seite gefunden, die anhand von OpenStreetMap-Wikipedia/Wikidata-ID oder räumlicher und namentlicher Übereinstimmung sicher zugeordnet werden konnte. Um falsche Inhalte zu vermeiden, wird deshalb keine fremde Kurzbeschreibung angezeigt.</p>`}${detail?.wiki?`<p class="detailsource">Quelle: Wikipedia · <a href="${esc(detail.wiki)}" target="_blank" rel="noopener">Artikel öffnen</a></p>`:''}${photos.length?`<p class="detailsource">Bilder: nur eindeutig zugeordnete Wikipedia-/Wikimedia-Dateien.</p>`:'<p class="detailsource">Kein ausreichend sicher zuordenbares Bild gefunden.</p>'}</div>`;
+    if(generation!==modalGeneration)return;
+      body.innerHTML=`${detailGalleryHtml(photos)}<div class="detailfacts"><span>📌 ${esc(kindLabel)}</span>${context?`<span>🌍 ${esc(context)}</span>`:''}${Number.isFinite(+item.lat)&&Number.isFinite(+item.lng)?`<span>⌖ ${(+item.lat).toFixed(3)}, ${(+item.lng).toFixed(3)}</span>`:''}<span>✓ ${esc(sourceLabel)}</span></div><div class="card detailcard"><h3>Kurzinfo</h3>${summary?`<p>${esc(summary)}</p>`:`<p>Für diesen Eintrag wurde keine Wikipedia-Seite gefunden, die anhand von OpenStreetMap-Wikipedia/Wikidata-ID oder räumlicher und namentlicher Übereinstimmung sicher zugeordnet werden konnte. Um falsche Inhalte zu vermeiden, wird deshalb keine fremde Kurzbeschreibung angezeigt.</p>`}${detail?.wiki?`<p class="detailsource">Quelle: Wikipedia · <a href="${esc(detail.wiki)}" target="_blank" rel="noopener">Artikel öffnen</a></p>`:''}${photos.length?`<p class="detailsource">Bilder: nur eindeutig zugeordnete Wikipedia-/Wikimedia-Dateien.</p>`:'<p class="detailsource">Kein ausreichend sicher zuordenbares Bild gefunden.</p>'}</div>`;
     if(kind==='city'){
       const wish=getWishlistEntry('city',item);actions.insertAdjacentHTML('beforeend',`<button id="detailCityOpen">Sehenswürdigkeiten ansehen</button><button id="detailWishBtn" class="primary">${wish?'✓ In Auswahl':'Für Route auswählen'}</button>`);
       $('#detailCityOpen').onclick=()=>{closeModal();cityInspirationModal(item)};$('#detailWishBtn').onclick=()=>{const current=getWishlistEntry('city',item);setWishlistSelection('city',item,!current,current?.priority||'high');closeModal();openSuggestionDetail('city',item,context)};
@@ -616,28 +927,28 @@ async function enrichCityPois(city,shown,onProgress=null){
 async function cityInspirationModal(city){
   const v=activeVersion();if(!v)return;showModal(`<h2>🏙 ${esc(city.name)}</h2><p class="lead">Konkrete Sehenswürdigkeiten dieser Stadt auswählen und direkt als Sightseeing-Tour einem Reisetag zuordnen.</p><div class="formgrid"><label>Reisetag<select id="mCityDay">${v.days.map((d,i)=>`<option value="${d.id}">Tag ${i+1} · ${fmtShortDate(d.date)}</option>`).join('')}</select></label><label>Suchradius (m)<input id="mCityDetailRadius" type="number" min="1000" max="12000" step="500" value="5000"></label></div><div class="actions"><button data-close-modal>Schließen</button><button id="openCityOverview">Stadt entdecken</button><button id="loadCityDetails" class="primary">Sehenswürdigkeiten laden</button></div><div id="cityDetailResults" class="city-poi-list"><div class="searchitem">Noch nicht geladen.</div></div>`,()=>{
     $('#openCityOverview').onclick=()=>openSuggestionDetail('city',city,activeTrip()?.destination||'');
-    $('#loadCityDetails').onclick=async()=>{const box=$('#cityDetailResults');box.innerHTML='<div class="searchitem">Stadt-Sehenswürdigkeiten und Bilder werden geladen …</div>';try{
+    $('#loadCityDetails').onclick=async()=>{const generation=modalGeneration,box=$('#cityDetailResults');box.innerHTML='<div class="searchitem">Stadt-Sehenswürdigkeiten und Bilder werden geladen …</div>';try{
       const pois=await Providers.cityPois(+city.lat,+city.lng,+$('#mCityDetailRadius').value||5000),shown=pois.slice(0,15);
       const addTour=async()=>{const day=v.days.find(d=>d.id===$('#mCityDay').value),picks=$$('[data-city-detail-pick]:checked').map(c=>shown[+c.dataset.cityDetailPick]);if(!day)return;let base=day.stops.find(s=>s.type==='city'&&normalizeName(s.name)===normalizeName(city.name));if(!base){base={id:uid('stop'),name:city.name,lat:+city.lat,lng:+city.lng,type:'city',priority:'high',durationMin:20,durationWish:20,notes:'Stadtbasis für Sightseeing-Tour',openingHours:'',fixedStart:'',images:[],tags:['city-base'],wildlife:[],modeToNext:'walk',routeToNext:null};day.stops.push(base);}const ordered=nearestOrder(base,picks);for(const p of ordered)day.stops.push({id:uid('stop'),name:p.name,lat:p.lat,lng:p.lng,type:p.type,priority:'normal',durationMin:30,durationWish:p.type==='sight'?60:45,notes:'Aus Stadt-Inspiration übernommen',openingHours:p.openingHours||'',fixedStart:'',images:p.photo?[{url:p.photo,full:p.photo,title:p.name,page:''}]:[],tags:['city-tour'],wildlife:[],modeToNext:'walk',routeToNext:null});base.planningPlaceholder=false;base.openIssues=[];persistSoon();closeModal();renderPlanner();await refreshDayRoutes(day,false);toast(`${ordered.length} Sehenswürdigkeiten zu Tag ${v.days.indexOf(day)+1} hinzugefügt.`);};
-      renderCityPoiResults(city,shown,addTour);
-      await enrichCityPois(city,shown,()=>renderCityPoiResults(city,shown,addTour));
-      renderCityPoiResults(city,shown,addTour);
+      if(generation!==modalGeneration)return;renderCityPoiResults(city,shown,addTour);
+      await enrichCityPois(city,shown,()=>{if(generation===modalGeneration)renderCityPoiResults(city,shown,addTour);});
+      if(generation===modalGeneration)renderCityPoiResults(city,shown,addTour);
     }catch(e){box.innerHTML=`<div class="warnline errorline">${esc(e.message)}</div>`}};
   });
 }
 function accommodations(v=activeVersion()){return (v?.days||[]).flatMap(d=>d.stops.filter(s=>s.type==='hotel'||s.accommodation).map(s=>({day:d,stop:s})));}
-function accommodationsForDate(v,date){return accommodations(v).filter(({stop:s})=>{const a=s.accommodation;if(!a)return true;return (!a.checkInDate||a.checkInDate<=date)&&(!a.checkOutDate||a.checkOutDate>=date);});}
+function accommodationsForDate(v,date){return accommodations(v).filter(({stop:s})=>{const a=s.accommodation;if(!a)return true;return (!a.checkInDate||a.checkInDate<=date)&&(!a.checkOutDate||a.checkOutDate>date);});}
 function accommodationModal(dayId=null){
   const v=activeVersion();if(!v)return;const day=dayId?v.days.find(d=>d.id===dayId):v.days[0];
   showModal(`<h2>🛏 Unterkunft hinzufügen</h2><p class="lead">Hotel, Airbnb/Ferienwohnung, Hostel oder Campingplatz als feste Basis der Reise speichern.</p><div class="formgrid one"><label>Name oder Adresse<input id="mLodgingSearch" placeholder="z. B. Hotelname oder vollständige Adresse"></label></div><div class="actions"><button id="searchLodgingBtn" class="primary">Suchen</button><button id="manualLodgingBtn">Manuell eintragen</button><button data-close-modal>Abbrechen</button></div><div id="lodgingResults" class="searchresults"></div>`,()=>{
-    const openDetails=(place=null)=>{closeModal();const s={id:uid('stop'),name:place?.name||'',lat:place?.lat??null,lng:place?.lng??null,type:'hotel',priority:'high',durationMin:20,durationWish:20,notes:'',openingHours:'',fixedStart:'',images:[],tags:['accommodation'],wildlife:[],modeToNext:'walk',routeToNext:null,accommodation:{kind:'Hotel',checkInDate:day.date,checkInTime:'15:00',checkOutDate:day.date,checkOutTime:'10:00',address:place?.display||'',bookingRef:''}};accommodationDetailsModal(day,s,true);};
+    const openDetails=(place=null)=>{closeModal();const s={id:uid('stop'),name:place?.name||'',lat:place?.lat??null,lng:place?.lng??null,type:'hotel',priority:'high',durationMin:20,durationWish:20,notes:'',openingHours:'',fixedStart:'',images:[],tags:['accommodation'],wildlife:[],modeToNext:'walk',routeToNext:null,accommodation:{kind:'Hotel',checkInDate:day.date,checkInTime:'15:00',checkOutDate:addDays(day.date,1),checkOutTime:'10:00',address:place?.display||'',bookingRef:''}};accommodationDetailsModal(day,s,true);};
     $('#searchLodgingBtn').onclick=async()=>{const q=$('#mLodgingSearch').value.trim();if(!q)return;const box=$('#lodgingResults');box.innerHTML='Suche …';try{const r=await Providers.geocode(q,8);box.innerHTML=r.map((x,i)=>`<div class="searchitem"><b>${esc(x.name)}</b><p>${esc(x.display)}</p><button data-pick-lodging="${i}">Auswählen</button></div>`).join('')||'Nichts gefunden.';$$('[data-pick-lodging]').forEach(b=>b.onclick=()=>openDetails(r[+b.dataset.pickLodging]));}catch(e){box.innerHTML=`<div class="warnline errorline">${esc(e.message)}</div>`}};
     $('#manualLodgingBtn').onclick=()=>openDetails(null);
   });
 }
 function accommodationDetailsModal(day,stop,isNew){
   const v=activeVersion(),a=stop.accommodation||{};showModal(`<h2>🛏 Unterkunft</h2><p class="lead">Die Unterkunft kann später als Ziel eines Flughafentransfers und als Startpunkt für Stadtrundgänge verwendet werden.</p><div class="formgrid"><label>Name<input id="mLodgingName" value="${esc(stop.name)}"></label><label>Art<select id="mLodgingKind">${['Hotel','Airbnb / Ferienwohnung','Hostel','Campingplatz','Sonstige Unterkunft'].map(x=>`<option ${a.kind===x?'selected':''}>${x}</option>`).join('')}</select></label><label>Anreisetag<select id="mLodgingDay">${v.days.map((d,i)=>`<option value="${d.id}" ${d.id===day.id?'selected':''}>Tag ${i+1} · ${fmtShortDate(d.date)}</option>`).join('')}</select></label><label>Check-in<input id="mCheckInTime" type="time" value="${esc(a.checkInTime||'15:00')}"></label><label>Check-out-Datum<input id="mCheckOutDate" type="date" value="${esc(a.checkOutDate||day.date)}"></label><label>Check-out-Zeit<input id="mCheckOutTime" type="time" value="${esc(a.checkOutTime||'10:00')}"></label><label>Breitengrad<input id="mLodgingLat" type="number" step="any" value="${stop.lat??''}"></label><label>Längengrad<input id="mLodgingLng" type="number" step="any" value="${stop.lng??''}"></label></div><div class="formgrid one"><label>Adresse<input id="mLodgingAddress" value="${esc(a.address||'')}"></label><label>Buchungs-/Reservierungsnummer<input id="mLodgingRef" value="${esc(a.bookingRef||'')}"></label><label>Notizen<textarea id="mLodgingNotes">${esc(stop.notes||'')}</textarea></label></div><div class="actions"><button data-close-modal>Abbrechen</button><button id="saveLodgingBtn" class="primary">Unterkunft speichern</button></div>`,()=>{
-    $('#saveLodgingBtn').onclick=()=>{const target=v.days.find(d=>d.id===$('#mLodgingDay').value),address=$('#mLodgingAddress').value.trim(),kind=$('#mLodgingKind').value,name=$('#mLodgingName').value.trim()||'Unterkunft';const unresolved=[];if(!address)unresolved.push('Konkrete Unterkunft und Adresse noch offen');if(kind==='Unterkunft offen'||/\(offen\)/i.test(name))unresolved.push('Konkrete Unterkunft auswählen');Object.assign(stop,{name,lat:$('#mLodgingLat').value===''?null:+$('#mLodgingLat').value,lng:$('#mLodgingLng').value===''?null:+$('#mLodgingLng').value,type:'hotel',notes:$('#mLodgingNotes').value.trim(),planningPlaceholder:unresolved.length>0,openIssues:unresolved,accommodation:{kind,checkInDate:target.date,checkInTime:$('#mCheckInTime').value,checkOutDate:$('#mCheckOutDate').value||target.date,checkOutTime:$('#mCheckOutTime').value,address,bookingRef:$('#mLodgingRef').value.trim(),planningPlaceholder:unresolved.length>0}});if(isNew)target.stops.push(stop);else if(target.id!==day.id){day.stops=day.stops.filter(x=>x.id!==stop.id);target.stops.push(stop)}persistSoon();closeModal();renderAll();toast('Unterkunft gespeichert.');};
+    $('#saveLodgingBtn').onclick=()=>{const target=v.days.find(d=>d.id===$('#mLodgingDay').value);if(!$('#mCheckOutDate').value||$('#mCheckOutDate').value<=target.date){toast('Check-out muss nach dem Check-in liegen.');return;}const address=$('#mLodgingAddress').value.trim(),kind=$('#mLodgingKind').value,name=$('#mLodgingName').value.trim()||'Unterkunft';const unresolved=[];if(!address)unresolved.push('Konkrete Unterkunft und Adresse noch offen');if(kind==='Unterkunft offen'||/\(offen\)/i.test(name))unresolved.push('Konkrete Unterkunft auswählen');Object.assign(stop,{name,lat:$('#mLodgingLat').value===''?null:+$('#mLodgingLat').value,lng:$('#mLodgingLng').value===''?null:+$('#mLodgingLng').value,type:'hotel',notes:$('#mLodgingNotes').value.trim(),planningPlaceholder:unresolved.length>0,openIssues:unresolved,accommodation:{kind,checkInDate:target.date,checkInTime:$('#mCheckInTime').value,checkOutDate:$('#mCheckOutDate').value||target.date,checkOutTime:$('#mCheckOutTime').value,address,bookingRef:$('#mLodgingRef').value.trim(),planningPlaceholder:unresolved.length>0}});invalidateStopRoutes(v,stop);if(isNew)target.stops.push(stop);else if(target.id!==day.id){day.stops=day.stops.filter(x=>x.id!==stop.id);target.stops.push(stop)}persistSoon();closeModal();renderAll();toast('Unterkunft gespeichert.');};
   });
 }
 function airportSearchTerm(to){const text=String(to||'').trim(),m=text.match(/\(([A-Z]{3})\)/i);return `${text.replace(/\([A-Z]{3}\)/i,'').trim()} ${m?m[1]+' ':''}Airport`.trim();}
@@ -653,8 +964,8 @@ function routeModeForConnection(mode){return ['car','rentalcar','camper','ridesh
 function connectionModal(connection=null){
   const v=activeVersion();if(!v)return;v.connections=v.connections||[];
   const baseMode=connection?.mode||'flight',defs=connectionModeDefaults(baseMode);
-  const x=connection||{id:uid('conn'),mode:baseMode,title:'',operator:'',number:'',reference:'',from:'',to:'',departDate:v.startDate,departTime:'',arriveDate:v.startDate,arriveTime:'',departureBuffer:defs.departureBuffer,arrivalBuffer:defs.arrivalBuffer,notes:'',distanceKm:0,durationMin:0};
-  showModal(`<h2>${connection?'Verbindung bearbeiten':'Verbindung hinzufügen'}</h2><p class="lead">Wähle zuerst das Verkehrsmittel. Die Eingabefelder und Standardpuffer passen sich automatisch daran an und können anschließend individuell geändert werden.</p><div class="formgrid"><label>Verkehrsmittel<select id="mConnMode">${['flight','train','bus','rentalcar','car','camper','ferry','transit','other'].map(k=>`<option value="${k}" ${x.mode===k?'selected':''}>${MODES[k]}</option>`).join('')}</select></label><label>Titel / Label<input id="mConnTitle" value="${esc(x.title||'')}" placeholder="z. B. Nachtzug oder Mietwagenetappe"></label></div><div id="connModeHint" class="modehint"></div><div id="connDynamic" class="formgrid"></div><div class="formgrid"><label>Von<input id="mConnFrom" value="${esc(x.from||'')}"></label><label>Nach<input id="mConnTo" value="${esc(x.to||'')}"></label><label>Abfahrtsdatum<input id="mConnDepartDate" type="date" value="${esc(x.departDate||v.startDate)}"></label><label>Abfahrtszeit<input id="mConnDepartTime" type="time" value="${esc(x.departTime||'')}"></label><label>Ankunftsdatum<input id="mConnArriveDate" type="date" value="${esc(x.arriveDate||v.startDate)}"></label><label>Ankunftszeit<input id="mConnArriveTime" type="time" value="${esc(x.arriveTime||'')}"></label><label><span id="mConnDepLabel">Puffer vor Abfahrt</span><input id="mConnDepBuffer" type="number" min="0" value="${x.departureBuffer??defs.departureBuffer}"></label><label><span id="mConnArrLabel">Puffer nach Ankunft</span><input id="mConnArrBuffer" type="number" min="0" value="${x.arrivalBuffer??defs.arrivalBuffer}"></label><label>Reine Verbindungsdauer (min)<input id="mConnDuration" type="number" min="0" value="${x.durationMin||0}"></label><label>Entfernung (km)<input id="mConnDistance" type="number" min="0" step="0.1" value="${x.distanceKm||0}"></label></div><div class="formgrid one"><label>Notizen<textarea id="mConnNotes">${esc(x.notes||'')}</textarea></label></div><div id="connStatus" class="tiny"></div><div class="actions"><button data-close-modal>Abbrechen</button>${connection?'<button id="deleteConnBtn" class="danger">Löschen</button>':''}<button id="calcConnBtn">Route berechnen</button><button id="saveConnBtn" class="primary">Speichern</button></div>`,()=>{
+  const x=connection?JSON.parse(JSON.stringify(connection)):{id:uid('conn'),mode:baseMode,title:'',operator:'',number:'',reference:'',from:'',to:'',departDate:v.startDate,departTime:'',arriveDate:v.startDate,arriveTime:'',departureBuffer:defs.departureBuffer,arrivalBuffer:defs.arrivalBuffer,notes:'',distanceKm:0,durationMin:0};
+  showModal(`<h2>${connection?'Verbindung bearbeiten':'Verbindung hinzufügen'}</h2><p class="lead">Wähle zuerst das Verkehrsmittel. Die Eingabefelder und Standardpuffer passen sich automatisch daran an und können anschließend individuell geändert werden.</p><div class="formgrid"><label>Verkehrsmittel<select id="mConnMode">${['flight','train','bus','rentalcar','car','camper','ferry','transit','other'].map(k=>`<option value="${k}" ${x.mode===k?'selected':''}>${MODES[k]}</option>`).join('')}</select></label><label>Titel / Label<input id="mConnTitle" value="${esc(x.title||'')}" placeholder="z. B. Nachtzug oder Mietwagenetappe"></label></div><div id="connModeHint" class="modehint"></div><div id="connDynamic" class="formgrid"></div><div class="formgrid"><label>Von<input id="mConnFrom" value="${esc(x.from||'')}"></label><label>Nach<input id="mConnTo" value="${esc(x.to||'')}"></label><label>Abfahrtsdatum<input id="mConnDepartDate" type="date" value="${esc(x.departDate||v.startDate)}"></label><label>Abfahrtszeit<input id="mConnDepartTime" type="time" value="${esc(x.departTime||'')}"></label><label>Ankunftsdatum<input id="mConnArriveDate" type="date" value="${esc(x.arriveDate||v.startDate)}"></label><label>Ankunftszeit<input id="mConnArriveTime" type="time" value="${esc(x.arriveTime||'')}"></label><label><span id="mConnDepLabel">Puffer vor Abfahrt</span><input id="mConnDepBuffer" type="number" min="0" value="${x.departureBuffer??defs.departureBuffer}"></label><label><span id="mConnArrLabel">Puffer nach Ankunft</span><input id="mConnArrBuffer" type="number" min="0" value="${x.arrivalBuffer??defs.arrivalBuffer}"></label><label>Reine Verbindungsdauer (min)<input id="mConnDuration" type="number" min="0" value="${x.durationMin||0}"></label><label>Entfernung (km)<input id="mConnDistance" type="number" min="0" step="0.1" value="${x.distanceKm||0}"></label></div><div class="formgrid one"><label>Notizen<textarea id="mConnNotes">${esc(x.notes||'')}</textarea></label></div>${planningReviewHtml(x,'connection')}<div id="connStatus" class="tiny"></div><div class="actions"><button data-close-modal>Abbrechen</button>${connection?'<button id="deleteConnBtn" class="danger">Löschen</button>':''}<button id="calcConnBtn">Route berechnen</button><button id="saveConnBtn" class="primary">Speichern</button></div>`,()=>{
     let firstRender=true;
     const renderDynamic=()=>{
       const mode=$('#mConnMode').value,dyn=$('#connDynamic'),hint=$('#connModeHint'),defs=connectionModeDefaults(mode);
@@ -675,24 +986,24 @@ function connectionModal(connection=null){
       $('#lookupConnFlightBtn')?.addEventListener('click',async()=>{const n=$('#mConnNumber').value.trim();if(!n)return;$('#connStatus').textContent='Flugroute wird gesucht …';try{const r=await Providers.flightRoute(n),route=r?.origin&&r?.destination?r:null;if(route){const orig=route.origin?.iata_code||route.origin?.icao_code||route.origin?.name||'',dest=route.destination?.iata_code||route.destination?.icao_code||route.destination?.name||'';if(orig)$('#mConnFrom').value=route.origin?.municipality?`${route.origin.municipality} (${orig})`:orig;if(dest)$('#mConnTo').value=route.destination?.municipality?`${route.destination.municipality} (${dest})`:dest;$('#connStatus').textContent='Route erkannt. Konkrete Zeiten bitte anhand deiner Buchung ergänzen.';}else $('#connStatus').textContent='Keine eindeutige Route gefunden.';}catch(e){$('#connStatus').textContent=e.message}});
     };
     renderDynamic();
-    $('#mConnMode').onchange=()=>{x.number=$('#mConnNumber')?.value.trim()||x.number||'';x.operator=$('#mConnOperator')?.value.trim()||x.operator||'';x.reference=$('#mConnReference')?.value.trim()||x.reference||'';x.mode=$('#mConnMode').value;renderDynamic();};
-    $('#calcConnBtn').onclick=async()=>{const from=$('#mConnFrom').value.trim(),to=$('#mConnTo').value.trim(),mode=$('#mConnMode').value;if(!from||!to){toast('Bitte Start und Ziel eintragen.');return}const status=$('#connStatus');status.textContent='Route wird gesucht …';try{if(mode==='flight'){const g1=await Providers.geocode(airportSearchTerm(from),3),g2=await Providers.geocode(airportSearchTerm(to),3);if(!g1[0]||!g2[0])throw new Error('Flughafen konnte nicht gefunden werden.');const r=await Providers.route({lat:g1[0].lat,lng:g1[0].lng},{lat:g2[0].lat,lng:g2[0].lng},'flight');$('#mConnDistance').value=(r.distanceKm||0).toFixed(1);status.textContent=`Luftlinie: ${kmText(r.distanceKm)}`;return}const g1=await Providers.geocode(from,3),g2=await Providers.geocode(to,3);if(!g1[0]||!g2[0])throw new Error('Start oder Ziel konnte nicht gefunden werden.');const routeMode=routeModeForConnection(mode),r=await Providers.route({lat:g1[0].lat,lng:g1[0].lng},{lat:g2[0].lat,lng:g2[0].lng},routeMode);$('#mConnDuration').value=Math.round(r.durationMin||0);$('#mConnDistance').value=(r.distanceKm||0).toFixed(1);status.textContent=`Route: ${kmText(r.distanceKm)} · ${durText(r.durationMin)}${r.approx?' (ca.)':''}`;}catch(e){status.textContent=e.message}};
-    $('#saveConnBtn').onclick=()=>{const mode=$('#mConnMode').value,number=$('#mConnNumber')?.value.trim()||'',operator=$('#mConnOperator')?.value.trim()||'',from=$('#mConnFrom').value.trim(),to=$('#mConnTo').value.trim(),departTime=$('#mConnDepartTime').value,arriveTime=$('#mConnArriveTime').value,unresolved=[];if(mode==='other')unresolved.push('Verkehrsmittel noch festlegen');if(!from||/offen/i.test(from))unresolved.push('Startort noch konkretisieren');if(!to||/offen/i.test(to))unresolved.push('Zielort noch konkretisieren');if(!departTime||!arriveTime)unresolved.push('Abfahrts- und Ankunftszeit noch ergänzen');if(['flight','train','bus','ferry'].includes(mode)&&!number)unresolved.push('Verbindungsnummer noch offen');Object.assign(x,{mode,title:$('#mConnTitle').value.trim(),number,operator,reference:$('#mConnReference')?.value.trim()||'',from,to,departDate:$('#mConnDepartDate').value,departTime,arriveDate:$('#mConnArriveDate').value,arriveTime,departureBuffer:+$('#mConnDepBuffer').value||0,arrivalBuffer:+$('#mConnArrBuffer').value||0,durationMin:+$('#mConnDuration').value||0,distanceKm:+$('#mConnDistance').value||0,notes:$('#mConnNotes').value.trim(),planningPlaceholder:unresolved.length>0,timeEstimated:false,openIssues:unresolved});if(!connection)v.connections.push(x);persistSoon();closeModal();renderPlanner();toast('Verbindung gespeichert.');};
-    if(connection)$('#deleteConnBtn').onclick=()=>{v.connections=v.connections.filter(z=>z.id!==x.id);persistSoon();closeModal();renderPlanner()};
+    $('#mConnMode').onchange=()=>{x.number=$('#mConnNumber')?.value.trim()||x.number||'';x.operator=$('#mConnOperator')?.value.trim()||x.operator||'';x.reference=$('#mConnReference')?.value.trim()||x.reference||'';x.mode=$('#mConnMode').value;x.geometry=null;x.approx=true;$('#mPlanningChecked').checked=false;renderDynamic();};
+    $('#calcConnBtn').onclick=async()=>{const from=$('#mConnFrom').value.trim(),to=$('#mConnTo').value.trim(),mode=$('#mConnMode').value;if(!from||!to){toast('Bitte Start und Ziel eintragen.');return}const status=$('#connStatus');status.textContent='Route wird gesucht …';try{if(mode==='flight'){const g1=await Providers.geocode(airportSearchTerm(from),3),g2=await Providers.geocode(airportSearchTerm(to),3);if(!g1[0]||!g2[0])throw new Error('Flughafen konnte nicht gefunden werden.');const r=await Providers.route({lat:g1[0].lat,lng:g1[0].lng},{lat:g2[0].lat,lng:g2[0].lng},'flight');$('#mConnDistance').value=(r.distanceKm||0).toFixed(1);status.textContent=`Luftlinie: ${kmText(r.distanceKm)}`;return}const g1=await Providers.geocode(from,3),g2=await Providers.geocode(to,3);if(!g1[0]||!g2[0])throw new Error('Start oder Ziel konnte nicht gefunden werden.');const routeMode=routeModeForConnection(mode),r=await Providers.route({lat:g1[0].lat,lng:g1[0].lng},{lat:g2[0].lat,lng:g2[0].lng},routeMode);if(r.unreachable)throw new Error('Keine Straßenroute gefunden.');$('#mConnDuration').value=Math.round(r.durationMin||0);$('#mConnDistance').value=(r.distanceKm||0).toFixed(1);status.textContent=`Route: ${kmText(r.distanceKm)} · ${durText(r.durationMin)}${r.approx?' (ca.)':''}`;}catch(e){status.textContent=e.message}};
+    $('#saveConnBtn').onclick=()=>{const mode=$('#mConnMode').value,number=$('#mConnNumber')?.value.trim()||'',operator=$('#mConnOperator')?.value.trim()||'',from=$('#mConnFrom').value.trim(),to=$('#mConnTo').value.trim(),departTime=$('#mConnDepartTime').value,arriveTime=$('#mConnArriveTime').value,unresolved=[];if(mode==='other')unresolved.push('Verkehrsmittel noch festlegen');if(!from||/offen/i.test(from))unresolved.push('Startort noch konkretisieren');if(!to||/offen/i.test(to))unresolved.push('Zielort noch konkretisieren');if(!departTime||!arriveTime)unresolved.push('Abfahrts- und Ankunftszeit noch ergänzen');if(['flight','train','bus','ferry'].includes(mode)&&!number)unresolved.push('Verbindungsnummer noch offen');if($('#mConnArriveDate').value<$('#mConnDepartDate').value){toast('Ankunftsdatum vor Abfahrtsdatum: Reise-/Zeitzonenangaben prüfen.');return;}Object.assign(x,{mode,title:$('#mConnTitle').value.trim(),number,operator,reference:$('#mConnReference')?.value.trim()||'',from,to,departDate:$('#mConnDepartDate').value,departTime,arriveDate:$('#mConnArriveDate').value,arriveTime,departureBuffer:+$('#mConnDepBuffer').value||0,arrivalBuffer:+$('#mConnArrBuffer').value||0,durationMin:+$('#mConnDuration').value||0,distanceKm:+$('#mConnDistance').value||0,notes:$('#mConnNotes').value.trim(),planningPlaceholder:unresolved.length>0,timeEstimated:!$('#mPlanningChecked')?.checked,openIssues:unresolved});syncConnectionTransfers(v,x,connection);if(connection)Object.assign(connection,x);else v.connections.push(x);persistSoon();closeModal();renderPlanner();toast('Verbindung gespeichert.');};
+    if(connection)$('#deleteConnBtn').onclick=()=>{v.connections=v.connections.filter(z=>z.id!==x.id);v.transfers=v.transfers.filter(z=>z.sourceRef!==`connection:${x.id}`);persistSoon();closeModal();renderPlanner()};
   });
 }
 async function transferModal(transfer=null,preselectedSourceRef=null){
-  const v=activeVersion();if(!v)return;v.transfers=v.transfers||[];const sources=versionConnections(v).filter(c=>c.arriveDate||c.departDate),lodgings=accommodations(v);if(!sources.length){toast('Füge zuerst mindestens eine Verbindung mit Zeiten hinzu.');return}if(!lodgings.length){toast('Füge zuerst eine Unterkunft hinzu.');accommodationModal();return}
-  const x=transfer||{id:uid('transfer'),sourceRef:preselectedSourceRef||sources[0].sourceRef,toStopId:lodgings[0].stop.id,transferType:'to_lodging',date:'',fromName:'',fromLat:null,fromLng:null,toName:'',toLat:null,toLng:null,mode:'transit',provider:'',reference:'',extraBufferMin:10,distanceKm:0,durationMin:0,approx:true,notes:''};
+  const v=activeVersion();if(!v)return;v.transfers=v.transfers||[];const sources=versionConnections(v).filter(c=>c.arriveDate||c.departDate),lodgings=accommodations(v).length?accommodations(v):v.days.flatMap(day=>day.stops.map(stop=>({day,stop})));if(!sources.length){toast('Füge zuerst mindestens eine Verbindung mit Zeiten hinzu.');return}if(!lodgings.length){toast('Füge zuerst eine Unterkunft hinzu.');accommodationModal();return}
+  const x=transfer?JSON.parse(JSON.stringify(transfer)):{id:uid('transfer'),sourceRef:preselectedSourceRef||sources[0].sourceRef,toStopId:lodgings[0].stop.id,transferType:'to_lodging',date:'',fromName:'',fromLat:null,fromLng:null,toName:'',toLat:null,toLng:null,mode:'transit',provider:'',reference:'',extraBufferMin:10,distanceKm:0,durationMin:0,approx:true,notes:''};
   const source=sources.find(f=>f.sourceRef===(x.sourceRef||''))||sources[0];if(!x.date)x.date=source.arriveDate||source.departDate;
-  showModal(`<h2>↔ Transfer</h2><p class="lead">Transfer ist ein eigener Baustein zwischen Verbindung und Unterkunft. Verkehrsmittel, Route und Zusatzzeiten lassen sich unabhängig einstellen.</p><div class="formgrid"><label>Verbindung<select id="mTransferSource">${sources.map(f=>`<option value="${esc(f.sourceRef)}" ${f.sourceRef===source.sourceRef?'selected':''}>${esc(connectionLabel(f))} · ${fmtShortDate(f.arriveDate||f.departDate)}</option>`).join('')}</select></label><label>Transfer-Typ<select id="mTransferType"><option value="to_lodging" ${x.transferType==='to_lodging'?'selected':''}>Ankunft → Unterkunft</option><option value="to_airport" ${x.transferType==='to_airport'?'selected':''}>Unterkunft → Abfahrtsort</option></select></label><label>Unterkunft<select id="mTransferLodging">${lodgings.map(({stop:s})=>`<option value="${s.id}" ${s.id===x.toStopId?'selected':''}>${esc(s.name)}</option>`).join('')}</select></label><label>Verkehrsmittel<select id="mTransferMode">${['transit','train','bus','rentalcar','rideshare','taxi','car','walk'].map(k=>`<option value="${k}" ${x.mode===k?'selected':''}>${MODES[k]}</option>`).join('')}</select></label></div><div id="transferDynamic" class="formgrid"></div><div class="formgrid"><label>Reine Fahr-/Transferzeit (min)<input id="mTransferDuration" type="number" min="0" value="${x.durationMin||0}"></label><label>Zusätzlicher Puffer (min)<input id="mTransferExtra" type="number" min="0" value="${x.extraBufferMin??transferExtraDefault(x.mode)}"></label><label>Entfernung (km)<input id="mTransferDistance" type="number" min="0" step="0.1" value="${x.distanceKm||0}"></label><label>Datum<input id="mTransferDate" type="date" value="${esc(x.date||source.arriveDate||source.departDate)}"></label></div><div class="formgrid one"><label>Notizen<textarea id="mTransferNotes">${esc(x.notes||'')}</textarea></label></div><div id="transferModeHint" class="modehint"></div><div id="transferStatus" class="tiny"></div><div class="actions"><button data-close-modal>Abbrechen</button>${transfer?'<button id="deleteTransferBtn" class="danger">Löschen</button>':''}<button id="calcTransferBtn">Route berechnen</button><button id="saveTransferBtn" class="primary">Speichern</button></div>`,()=>{
+  showModal(`<h2>↔ Transfer</h2><p class="lead">Transfer ist ein eigener Baustein zwischen Verbindung und Unterkunft. Verkehrsmittel, Route und Zusatzzeiten lassen sich unabhängig einstellen.</p><div class="formgrid"><label>Verbindung<select id="mTransferSource">${sources.map(f=>`<option value="${esc(f.sourceRef)}" ${f.sourceRef===source.sourceRef?'selected':''}>${esc(connectionLabel(f))} · ${fmtShortDate(f.arriveDate||f.departDate)}</option>`).join('')}</select></label><label>Transfer-Typ<select id="mTransferType"><option value="to_lodging" ${x.transferType==='to_lodging'?'selected':''}>Ankunft → Unterkunft</option><option value="to_airport" ${x.transferType==='to_airport'?'selected':''}>Unterkunft → Abfahrtsort</option></select></label><label>Unterkunft / Aufenthaltsort<select id="mTransferLodging">${lodgings.map(({stop:s})=>`<option value="${s.id}" ${s.id===x.toStopId?'selected':''}>${esc(s.name)}</option>`).join('')}</select></label><label>Verkehrsmittel<select id="mTransferMode">${['transit','train','bus','rentalcar','rideshare','taxi','car','walk'].map(k=>`<option value="${k}" ${x.mode===k?'selected':''}>${MODES[k]}</option>`).join('')}</select></label></div><div id="transferDynamic" class="formgrid"></div><div class="formgrid"><label>Transfer von<input id="mTransferFrom" value="${esc(x.fromName||'')}"></label><label>Transfer nach<input id="mTransferTo" value="${esc(x.toName||'')}"></label></div><div class="formgrid"><label>Reine Fahr-/Transferzeit (min)<input id="mTransferDuration" type="number" min="0" value="${x.durationMin||0}"></label><label>Zusätzlicher Puffer (min)<input id="mTransferExtra" type="number" min="0" value="${x.extraBufferMin??transferExtraDefault(x.mode)}"></label><label>Entfernung (km)<input id="mTransferDistance" type="number" min="0" step="0.1" value="${x.distanceKm||0}"></label><label>Datum<input id="mTransferDate" type="date" value="${esc(x.date||source.arriveDate||source.departDate)}"></label></div><div class="formgrid one"><label>Notizen<textarea id="mTransferNotes">${esc(x.notes||'')}</textarea></label></div><div id="transferModeHint" class="modehint"></div>${planningReviewHtml(x,'transfer')}<div id="transferStatus" class="tiny"></div><div class="actions"><button data-close-modal>Abbrechen</button>${transfer?'<button id="deleteTransferBtn" class="danger">Löschen</button>':''}<button id="calcTransferBtn">Route berechnen</button><button id="saveTransferBtn" class="primary">Speichern</button></div>`,()=>{
     let first=true;
     const renderTransferDynamic=()=>{const mode=$('#mTransferMode').value,dyn=$('#transferDynamic'),hint=$('#transferModeHint');const cfg={transit:['Linie / Verbindung','Betreiber','Warte- und Umstiegszeit zusätzlich zur berechneten Fahrzeit.'],train:['Zug / Airport Express','Betreiber','Zusatzpuffer z. B. für Bahnsteig, Ticket oder Umstieg.'],bus:['Linie / Bus','Anbieter','Zusatzpuffer z. B. für Haltestellensuche und Boarding.'],rentalcar:['Reservierungsnummer','Vermieter','Zusatzpuffer für Schalter, Vertrag und Fahrzeugübernahme.'],rideshare:['Buchung / Referenz','Anbieter','Zusatzpuffer für Abholung und Wartezeit.'],taxi:['Referenz','Taxi-Anbieter','Kleiner Wartepuffer vor der Abfahrt.'],car:['Fahrzeug / Notiz','', 'Privater Pkw: Zusatzpuffer optional für Parken oder Gepäck.'],walk:['','', 'Fußweg: normalerweise kein Zusatzpuffer nötig.']}[mode]||['Referenz','Anbieter',''];hint.textContent=cfg[2];dyn.innerHTML=`${cfg[0]?`<label>${cfg[0]}<input id="mTransferRef" value="${esc(x.reference||'')}"></label>`:''}${cfg[1]?`<label>${cfg[1]}<input id="mTransferProvider" value="${esc(x.provider||'')}"></label>`:''}`;if(!transfer&&!first)$('#mTransferExtra').value=transferExtraDefault(mode);first=false;};
     renderTransferDynamic();
     const syncDate=()=>{const f=sources.find(z=>z.sourceRef===$('#mTransferSource').value),type=$('#mTransferType').value;if(f)$('#mTransferDate').value=(type==='to_airport'?(f.departDate||f.arriveDate):(f.arriveDate||f.departDate))||''};
     $('#mTransferSource').onchange=syncDate;$('#mTransferType').onchange=syncDate;$('#mTransferMode').onchange=()=>{x.reference=$('#mTransferRef')?.value.trim()||x.reference||'';x.provider=$('#mTransferProvider')?.value.trim()||x.provider||'';x.mode=$('#mTransferMode').value;renderTransferDynamic();};
-    $('#calcTransferBtn').onclick=async()=>{const f=sources.find(z=>z.sourceRef===$('#mTransferSource').value),lod=lodgings.find(z=>z.stop.id===$('#mTransferLodging').value)?.stop;if(!f||!lod||!Number.isFinite(lod.lat)||!Number.isFinite(lod.lng)){toast('Verbindung oder Unterkunft mit Koordinaten fehlt.');return}const status=$('#transferStatus');status.textContent='Transfer wird berechnet …';try{const type=$('#mTransferType').value,mode=$('#mTransferMode').value,query=terminalSearchTerm(f,type==='to_airport'?'departure':'arrival'),g=await Providers.geocode(query,5),terminal=g[0];if(!terminal)throw new Error('Start- oder Zielterminal konnte nicht gefunden werden.');let from,to;if(type==='to_airport'){from={lat:lod.lat,lng:lod.lng};to={lat:terminal.lat,lng:terminal.lng};x.fromName=lod.name;x.toName=terminal.name||f.from;}else{from={lat:terminal.lat,lng:terminal.lng};to={lat:lod.lat,lng:lod.lng};x.fromName=terminal.name||f.to;x.toName=lod.name;}x.fromLat=from.lat;x.fromLng=from.lng;x.toLat=to.lat;x.toLng=to.lng;const routeMode=routeModeForConnection(mode),r=await Providers.route(from,to,routeMode);x.approx=(routeMode!=='car')||r.approx;$('#mTransferDuration').value=Math.round(r.durationMin||0);$('#mTransferDistance').value=(r.distanceKm||0).toFixed(1);status.textContent=`Route: ${kmText(r.distanceKm)} · ${durText(r.durationMin)} + ${durText(+$('#mTransferExtra').value||0)} Puffer = ${durText((r.durationMin||0)+(+$('#mTransferExtra').value||0))}`;}catch(e){status.textContent=e.message}};
-    $('#saveTransferBtn').onclick=()=>{const f=sources.find(z=>z.sourceRef===$('#mTransferSource').value),lod=lodgings.find(z=>z.stop.id===$('#mTransferLodging').value)?.stop;if(!f||!lod){toast('Verbindung und Unterkunft auswählen.');return}const type=$('#mTransferType').value,duration=+$('#mTransferDuration').value||0,unresolved=[];if(!duration)unresolved.push('Transferdauer noch festlegen');Object.assign(x,{sourceRef:f.sourceRef,flightId:f.legacyFlight?f.id:'',toStopId:lod.id,transferType:type,date:$('#mTransferDate').value||(type==='to_airport'?(f.departDate||f.arriveDate):(f.arriveDate||f.departDate)),mode:$('#mTransferMode').value,provider:$('#mTransferProvider')?.value.trim()||'',reference:$('#mTransferRef')?.value.trim()||'',durationMin:duration,extraBufferMin:+$('#mTransferExtra').value||0,distanceKm:+$('#mTransferDistance').value||0,notes:$('#mTransferNotes').value.trim(),planningPlaceholder:unresolved.length>0,timeEstimated:false,openIssues:unresolved});if(!x.fromName)x.fromName=type==='to_airport'?lod.name:(f.to||'Terminal');if(!x.toName)x.toName=type==='to_airport'?(f.from||'Terminal'):lod.name;if(!transfer)v.transfers.push(x);persistSoon();closeModal();renderPlanner();toast('Transfer gespeichert.');};
+    $('#calcTransferBtn').onclick=async()=>{const f=sources.find(z=>z.sourceRef===$('#mTransferSource').value),lod=lodgings.find(z=>z.stop.id===$('#mTransferLodging').value)?.stop;if(!f||!lod||!Number.isFinite(lod.lat)||!Number.isFinite(lod.lng)){toast('Verbindung oder Unterkunft mit Koordinaten fehlt.');return}const status=$('#transferStatus');status.textContent='Transfer wird berechnet …';try{const type=$('#mTransferType').value,mode=$('#mTransferMode').value,query=terminalSearchTerm(f,type==='to_airport'?'departure':'arrival'),g=await Providers.geocode(query,5),terminal=g[0];if(!terminal)throw new Error('Start- oder Zielterminal konnte nicht gefunden werden.');let from,to;if(type==='to_airport'){from={lat:lod.lat,lng:lod.lng};to={lat:terminal.lat,lng:terminal.lng};x.fromName=lod.name;x.toName=terminal.name||f.from;}else{from={lat:terminal.lat,lng:terminal.lng};to={lat:lod.lat,lng:lod.lng};x.fromName=terminal.name||f.to;x.toName=lod.name;}x.fromLat=from.lat;x.fromLng=from.lng;x.toLat=to.lat;x.toLng=to.lng;$('#mTransferFrom').value=x.fromName;$('#mTransferTo').value=x.toName;const routeMode=routeModeForConnection(mode),r=await Providers.route(from,to,routeMode);if(r.unreachable)throw new Error('Keine Straßenroute gefunden.');x.approx=(routeMode!=='car')||r.approx;$('#mTransferDuration').value=Math.round(r.durationMin||0);$('#mTransferDistance').value=(r.distanceKm||0).toFixed(1);status.textContent=`Route: ${kmText(r.distanceKm)} · ${durText(r.durationMin)} + ${durText(+$('#mTransferExtra').value||0)} Puffer = ${durText((r.durationMin||0)+(+$('#mTransferExtra').value||0))}`;}catch(e){status.textContent=e.message}};
+    $('#saveTransferBtn').onclick=()=>{const f=sources.find(z=>z.sourceRef===$('#mTransferSource').value),lod=lodgings.find(z=>z.stop.id===$('#mTransferLodging').value)?.stop;if(!f||!lod){toast('Verbindung und Unterkunft auswählen.');return}if(x.sourceRef!==f.sourceRef||x.toStopId!==lod.id||x.transferType!==$('#mTransferType').value){x.fromLat=null;x.fromLng=null;x.toLat=null;x.toLng=null;x.approx=true;}const type=$('#mTransferType').value,duration=+$('#mTransferDuration').value||0,unresolved=[];if(!duration)unresolved.push('Transferdauer noch festlegen');Object.assign(x,{fromName:$('#mTransferFrom').value.trim(),toName:$('#mTransferTo').value.trim(),sourceRef:f.sourceRef,flightId:f.legacyFlight?f.id:'',toStopId:lod.id,transferType:type,date:$('#mTransferDate').value||(type==='to_airport'?(f.departDate||f.arriveDate):(f.arriveDate||f.departDate)),mode:$('#mTransferMode').value,provider:$('#mTransferProvider')?.value.trim()||'',reference:$('#mTransferRef')?.value.trim()||'',durationMin:duration,extraBufferMin:+$('#mTransferExtra').value||0,distanceKm:+$('#mTransferDistance').value||0,notes:$('#mTransferNotes').value.trim(),planningPlaceholder:unresolved.length>0,timeEstimated:!$('#mPlanningChecked')?.checked,openIssues:unresolved});if(!x.fromName)x.fromName=type==='to_airport'?lod.name:(f.to||'Terminal');if(!x.toName)x.toName=type==='to_airport'?(f.from||'Terminal'):lod.name;if(transfer)Object.assign(transfer,x);else v.transfers.push(x);persistSoon();closeModal();renderPlanner();toast('Transfer gespeichert.');};
     if(transfer)$('#deleteTransferBtn').onclick=()=>{v.transfers=v.transfers.filter(z=>z.id!==x.id);persistSoon();closeModal();renderPlanner()};
   });
 }
@@ -706,7 +1017,7 @@ function nearestOrder(anchor,pois){const rem=[...pois],out=[];let cur=anchor;whi
 
 async function refreshDayRoutes(day,announce=true){
   if(day.stops.length<2){if(announce)toast('Mindestens zwei Stopps nötig.');return}
-  for(let i=0;i<day.stops.length-1;i++){const a=day.stops[i],b=day.stops[i+1];if(!Number.isFinite(a.lat)||!Number.isFinite(a.lng)||!Number.isFinite(b.lat)||!Number.isFinite(b.lng)){a.routeToNext=null;continue}try{a.routeToNext=await Providers.route(a,b,a.modeToNext||'car');renderPlanner();}catch(e){a.routeToNext=null}}
+  for(let i=0;i<day.stops.length-1;i++){const a=day.stops[i],b=day.stops[i+1];if(a.wishlistKey&&b.wishlistKey&&(activeVersion()?.connections||[]).some(c=>c.fromWishlistKey===a.wishlistKey&&c.toWishlistKey===b.wishlistKey&&c.departDate===day.date)){a.routeToNext=null;continue;}if(!Number.isFinite(a.lat)||!Number.isFinite(a.lng)||!Number.isFinite(b.lat)||!Number.isFinite(b.lng)){a.routeToNext=null;continue}try{const route=await Providers.route(a,b,a.modeToNext||'car');if(route.unreachable)throw new Error('Keine Straßenroute gefunden; Verbindung oder Fähre manuell ergänzen.');a.routeToNext=route;renderPlanner();}catch(e){a.routeToNext=null}}
   day.stops[day.stops.length-1].routeToNext=null;persistSoon();renderPlanner();if(currentView==='map')renderMap();if(announce)toast('Strecken aktualisiert.');
 }
 async function refreshAllRoutes(){const v=activeVersion();if(!v)return;$('#refreshBtn').classList.add('loading');try{for(const d of v.days)await refreshDayRoutes(d,false);toast('Alle Strecken aktualisiert.');}finally{$('#refreshBtn').classList.remove('loading')}}
@@ -721,14 +1032,15 @@ function initMap(){
 }
 function renderMap(){
   initMap();if(!mapReady)return;const v=activeVersion();if(!v){mapStopLayer.clearLayers();mapRouteLayer.clearLayers();return}
-  if(!mapDayVisible.size)v.days.forEach((_,i)=>mapDayVisible.add(i));
+  if(mapVersionId!==v.id){mapVersionId=v.id;mapDayVisible=new Set(v.days.map((_,i)=>i));map._hasFitOnce=false;}
   const chips=$('#mapDayChips');chips.innerHTML='';v.days.forEach((d,i)=>{const b=document.createElement('button');b.textContent=`Tag ${i+1}`;b.style.borderColor=DAY_COLORS[i%DAY_COLORS.length];b.style.color=DAY_COLORS[i%DAY_COLORS.length];if(!mapDayVisible.has(i))b.classList.add('off');b.onclick=()=>{mapDayVisible.has(i)?mapDayVisible.delete(i):mapDayVisible.add(i);renderMap()};chips.appendChild(b)});
   mapStopLayer.clearLayers();mapRouteLayer.clearLayers();const bounds=[];
-  v.days.forEach((d,di)=>{if(!mapDayVisible.has(di))return;const color=DAY_COLORS[di%DAY_COLORS.length];d.stops.forEach((s,i)=>{if(!Number.isFinite(s.lat)||!Number.isFinite(s.lng))return;bounds.push([s.lat,s.lng]);const marker=L.circleMarker([s.lat,s.lng],{radius:8,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).addTo(mapStopLayer);marker.bindTooltip(`Tag ${di+1}: ${s.name}`);marker.bindPopup(mapPopup(s,di));marker.on('popupopen',async()=>{if(!(s.images||[]).length){try{const kind=s.type==='city'?'city':'poi',detail=await Providers.verifiedPlaceDetails(s,activeTrip()?.destination||'',kind);s.images=await Providers.verifiedPhotosForItem(s,activeTrip()?.destination||'',kind,detail);persistSoon();marker.setPopupContent(mapPopup(s,di));}catch(e){}}});if(i<d.stops.length-1){const r=s.routeToNext;if(r?.geometry?.length){L.polyline(r.geometry,{color,weight:5,opacity:.78}).addTo(mapRouteLayer);}else{const n=d.stops[i+1];if(Number.isFinite(n.lat)&&Number.isFinite(n.lng))L.polyline([[s.lat,s.lng],[n.lat,n.lng]],{color,weight:3,opacity:.45,dashArray:'5 7'}).addTo(mapRouteLayer);}}});for(const tr of (v.transfers||[]).filter(x=>x.date===d.date)){if(Number.isFinite(tr.fromLat)&&Number.isFinite(tr.fromLng)&&Number.isFinite(tr.toLat)&&Number.isFinite(tr.toLng)){bounds.push([tr.fromLat,tr.fromLng],[tr.toLat,tr.toLng]);L.polyline([[tr.fromLat,tr.fromLng],[tr.toLat,tr.toLng]],{color,weight:4,opacity:.75,dashArray:'8 7'}).bindTooltip(`Tag ${di+1}: ${transferLabel(tr)} · ${MODES[tr.mode]||tr.mode}`).addTo(mapRouteLayer);}}});
+  v.days.forEach((d,di)=>{if(!mapDayVisible.has(di))return;const color=DAY_COLORS[di%DAY_COLORS.length];d.stops.forEach((s,i)=>{if(!Number.isFinite(s.lat)||!Number.isFinite(s.lng))return;bounds.push([s.lat,s.lng]);const marker=L.circleMarker([s.lat,s.lng],{radius:8,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).addTo(mapStopLayer);marker.bindTooltip(`Tag ${di+1}: ${s.name}`);marker.bindPopup(mapPopup(s,di));marker.on('popupopen',async()=>{if(!(s.images||[]).length&&!s.photoChecked){try{const kind=s.taxonId?'wildlife':s.type==='city'?'city':'poi',detail=await Providers.verifiedPlaceDetails(s,activeTrip()?.destination||'',kind);s.images=await Providers.verifiedPhotosForItem(s,activeTrip()?.destination||'',kind,detail);s.photoChecked=true;persistSoon();marker.setPopupContent(mapPopup(s,di));}catch(e){s.photoChecked=true;marker.setPopupContent(mapPopup(s,di));}}});if(i<d.stops.length-1){const r=s.routeToNext;if(r?.geometry?.length){L.polyline(r.geometry,{color,weight:5,opacity:.78}).addTo(mapRouteLayer);}else{const n=d.stops[i+1];if(Number.isFinite(n.lat)&&Number.isFinite(n.lng))L.polyline([[s.lat,s.lng],[n.lat,n.lng]],{color,weight:3,opacity:.45,dashArray:'5 7'}).addTo(mapRouteLayer);}}});for(const tr of (v.transfers||[]).filter(x=>x.date===d.date)){if(Number.isFinite(tr.fromLat)&&Number.isFinite(tr.fromLng)&&Number.isFinite(tr.toLat)&&Number.isFinite(tr.toLng)){bounds.push([tr.fromLat,tr.fromLng],[tr.toLat,tr.toLng]);L.polyline([[tr.fromLat,tr.fromLng],[tr.toLat,tr.toLng]],{color,weight:4,opacity:.75,dashArray:'8 7'}).bindTooltip(`Tag ${di+1}: ${transferLabel(tr)} · ${MODES[tr.mode]||tr.mode}`).addTo(mapRouteLayer);}}});
+  for(const c of v.connections||[]){const di=v.days.findIndex(d=>d.date===c.departDate);if(!mapDayVisible.has(di))continue;const points=c.geometry?.length?c.geometry:Planner.hasLocation({lat:c.fromLat,lng:c.fromLng})&&Planner.hasLocation({lat:c.toLat,lng:c.toLng})?[[c.fromLat,c.fromLng],[c.toLat,c.toLng]]:null;if(points)L.polyline(points,{color:DAY_COLORS[di%DAY_COLORS.length],weight:4,opacity:.7,dashArray:c.approx||c.mode==='flight'?'7 7':null}).bindTooltip(connectionLabel(c)).addTo(mapRouteLayer);}
   if(bounds.length){if(!map._hasFitOnce){map.fitBounds(bounds,{padding:[30,30]});map._hasFitOnce=true}}
   setTimeout(()=>map.invalidateSize(),80);
 }
-function mapPopup(s,di){return `<div class="mappopup"><h3><span style="color:${DAY_COLORS[di%DAY_COLORS.length]}">Tag ${di+1}</span> · ${esc(s.name)}</h3><p>${STOP_ICONS[s.type]||'•'} ${priorityText(s.priority)} · ${durText(s.durationWish||s.durationMin)}</p>${s.openingHours?`<p><b>Öffnungszeiten:</b> ${esc(s.openingHours)}</p>`:''}${s.notes?`<p>${esc(s.notes)}</p>`:''}${(s.images||[]).length?`<div class="popphotos">${s.images.slice(0,3).map(x=>`<a href="${esc(x.page||x.full||x.url)}" target="_blank"><img src="${esc(x.url)}"></a>`).join('')}</div>`:'<p>Bilder werden beim ersten Öffnen gesucht …</p>'}</div>`}
+function mapPopup(s,di){return `<div class="mappopup"><h3><span style="color:${DAY_COLORS[di%DAY_COLORS.length]}">Tag ${di+1}</span> · ${esc(s.name)}</h3><p>${STOP_ICONS[s.type]||'•'} ${priorityText(s.priority)} · ${durText(s.durationWish||s.durationMin)}</p>${s.openingHours?`<p><b>Öffnungszeiten:</b> ${esc(s.openingHours)}</p>`:''}${s.notes?`<p>${esc(s.notes)}</p>`:''}${(s.images||[]).length?`<div class="popphotos">${s.images.slice(0,3).map(x=>`<a href="${esc(x.page||x.full||x.url)}" target="_blank"><img src="${esc(x.url)}"></a>`).join('')}</div>`:(s.photoChecked?'<p>Kein eindeutig zugeordnetes Bild verfügbar.</p>':'<p>Bilder werden beim ersten Öffnen gesucht …</p>')}</div>`}
 function fitMap(){if(!mapReady)return;const v=activeVersion(),pts=v?.days.flatMap(d=>d.stops).filter(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lng)).map(s=>[s.lat,s.lng])||[];for(const tr of v?.transfers||[]){if(Number.isFinite(tr.fromLat)&&Number.isFinite(tr.fromLng))pts.push([tr.fromLat,tr.fromLng]);if(Number.isFinite(tr.toLat)&&Number.isFinite(tr.toLng))pts.push([tr.toLat,tr.toLng]);}if(pts.length)map.fitBounds(pts,{padding:[25,25]})}
 function mapFilterModal(){const v=activeVersion();if(!v)return;showModal(`<h2>Kartenfilter</h2><p class="lead">Zeige nur ausgewählte Reisetage.</p><div class="chips">${v.days.map((d,i)=>`<button class="chip ${mapDayVisible.has(i)?'on':''}" data-map-day="${i}">Tag ${i+1}<br><small>${fmtShortDate(d.date)}</small></button>`).join('')}</div><div class="actions"><button id="mapAllDays">Alle</button><button id="mapNoDays">Keine</button><button data-close-modal class="primary">Fertig</button></div>`,()=>{$$('[data-map-day]').forEach(b=>b.onclick=()=>{const i=+b.dataset.mapDay;mapDayVisible.has(i)?mapDayVisible.delete(i):mapDayVisible.add(i);b.classList.toggle('on');renderMap()});$('#mapAllDays').onclick=()=>{v.days.forEach((_,i)=>mapDayVisible.add(i));closeModal();renderMap()};$('#mapNoDays').onclick=()=>{mapDayVisible.clear();closeModal();renderMap()}})}
 
@@ -821,22 +1133,23 @@ window.AppUpdater={
 function switchView(name){currentView=name;$$('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));$$('.bottomnav button').forEach(b=>b.classList.toggle('active',b.dataset.view===name));if(name==='map')setTimeout(renderMap,20)}
 function locateStop(id){const v=activeVersion();if(!v)return null;for(const d of v.days){const s=d.stops.find(x=>x.id===id);if(s)return{day:d,stop:s}}return null}
 function bindEvents(){
+  document.addEventListener('error',event=>{const img=event.target;if(img?.tagName==='IMG'){const fallback=document.createElement('span');fallback.className='imagefallback';fallback.textContent='Bild nicht verfügbar';img.replaceWith(fallback);}},true);
   $$('.bottomnav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
   $('#tripSelect').onchange=e=>{state.activeTripId=e.target.value;ensureActive();discoverVisible.cities=discoverVisible.attractions=discoverVisible.wildlife=5;mapDayVisible.clear();persistSoon();renderAll()};
   $('#versionSelect').onchange=e=>{const t=activeTrip();if(t)t.selectedVersionId=e.target.value;mapDayVisible.clear();persistSoon();renderAll()};
-  $('#newTripBtn').onclick=newTripModal; $('#refreshBtn').onclick=refreshAllRoutes; $('#discoverBtn').onclick=discoverAll;$('#reloadCitiesBtn').onclick=loadCities;$('#reloadPoiBtn').onclick=loadAttractions;$('#reloadWildBtn').onclick=loadWildlife;$('#autoRouteBtn').onclick=autoRouteModal;$('#clearWishlistBtn').onclick=()=>{const t=activeTrip();if(t?.wishlist?.length&&confirm('Gesamte Auswahl für die Routenplanung leeren?')){t.wishlist=[];persistSoon();renderDiscover()}};$('#addStopBtn').onclick=()=>addStopModal();$('#addConnectionBtn').onclick=()=>connectionModal();$('#addAccommodationBtn').onclick=()=>accommodationModal();$('#addTransferBtn').onclick=()=>transferModal();$('#fitMapBtn').onclick=fitMap;$('#mapFilterBtn').onclick=mapFilterModal;
+  $('#newTripBtn').onclick=newTripModal; $('#refreshBtn').onclick=refreshAllRoutes; $('#discoverBtn').onclick=discoverAll;$('#reloadCitiesBtn').onclick=()=>loadCities(true);$('#reloadPoiBtn').onclick=()=>loadAttractions(true);$('#reloadWildBtn').onclick=()=>loadWildlife(true);$('#autoRouteBtn').onclick=autoRouteModal;$('#clearWishlistBtn').onclick=()=>{const t=activeTrip();if(t?.wishlist?.length&&confirm('Gesamte Auswahl für die Routenplanung leeren?')){t.wishlist=[];persistSoon();renderDiscover()}};$('#addStopBtn').onclick=()=>addStopModal();$('#addConnectionBtn').onclick=()=>connectionModal();$('#addAccommodationBtn').onclick=()=>accommodationModal();$('#addTransferBtn').onclick=()=>transferModal();$('#fitMapBtn').onclick=fitMap;$('#mapFilterBtn').onclick=mapFilterModal;
   $('#compareA').onchange=renderCompareResult;$('#compareB').onchange=renderCompareResult;
   $('#saveSettingsBtn').onclick=()=>{state.settings={defaultStart:$('#defaultStart').value||'08:00',defaultEnd:$('#defaultEnd').value||'20:00',arrivalBuffer:+$('#arrivalBuffer').value||0,departureBuffer:+$('#departureBuffer').value||0};persistSoon();toast('Einstellungen gespeichert.')};
   $('#checkUpdateBtn').onclick=()=>checkForUpdates({silent:false}); $('#installUpdateBtn').onclick=installAvailableUpdate;
   $('#exportBtn').onclick=()=>{const t=activeTrip();const name=`Unser_Reiseplaner_${(t?.title||'Backup').replace(/[^a-zA-Z0-9äöüÄÖÜß_-]+/g,'_')}.json`;const raw=JSON.stringify(state,null,2);if(window.AndroidBridge?.exportBackup){const msg=AndroidBridge.exportBackup(raw,name);toast(msg)}else{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([raw],{type:'application/json'}));a.download=name;a.click();URL.revokeObjectURL(a.href)}};
-  $('#importFile').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);if(!x.trips)throw new Error('Ungültiges Backup');if(confirm('Aktuelle lokale Daten durch dieses Backup ersetzen?')){state=x;state.settings={...defaultSettings(),...(state.settings||{})};persistSoon();renderAll();toast('Backup importiert.')}}catch(err){toast('Backup konnte nicht gelesen werden.')}};r.readAsText(f)};
+  $('#importFile').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const x=normalizeLoadedState(JSON.parse(r.result));if(confirm('Aktuelle lokale Daten durch dieses Backup ersetzen?')){state=x;state.settings={...defaultSettings(),...(state.settings||{})};persistSoon();renderAll();toast('Backup importiert.')}}catch(err){toast('Backup konnte nicht gelesen werden.')}};r.readAsText(f)};
   $('#modal').addEventListener('click',e=>{if(e.target.dataset.close==='1'||e.target.hasAttribute('data-close-modal'))closeModal()});
   document.addEventListener('click',e=>{
-    const d=e.target.dataset;
+    const d=(e.target.closest('button')||e.target).dataset;
     if(d.openTrip){state.activeTripId=d.openTrip;persistSoon();renderAll();switchView('plan')}
     if(d.tripMenu){const t=state.trips.find(x=>x.id===d.tripMenu);if(t)tripMenuModal(t)}
     if(d.newVersion){const t=state.trips.find(x=>x.id===d.newVersion);state.activeTripId=t.id;const v=t.versions.find(x=>x.id===t.selectedVersionId)||t.versions[0],n=prompt('Name der neuen Version:',`${v.name} – Variante`);if(n){const c=cloneVersion(v,n);t.versions.push(c);t.selectedVersionId=c.id;persistSoon();renderAll()}}
-    if(d.dayToggle){const body=$(`#body_${d.dayToggle}`);if(body)body.classList.toggle('hidden')}
+    if(d.dayToggle){const day=activeVersion()?.days.find(x=>x.id===d.dayToggle),body=$(`#body_${d.dayToggle}`);if(day&&body){day.collapsed=!day.collapsed;body.hidden=day.collapsed;persistSoon();}}
     if(d.dayTime){const day=activeVersion()?.days.find(x=>x.id===d.dayTime);if(day)dayTimeModal(day)}
     if(d.dayAdd)addStopModal(d.dayAdd);
     if(d.dayAccommodation)accommodationModal(d.dayAccommodation);
@@ -852,6 +1165,7 @@ function bindEvents(){
     if(d.cityInspire){try{cityInspirationModal(JSON.parse(d.cityInspire))}catch(err){}}
     if(d.cityDetail){try{openSuggestionDetail('city',JSON.parse(d.cityDetail),activeTrip()?.destination||'')}catch(err){}}
     if(d.cityOverview){try{openSuggestionDetail('city',JSON.parse(d.cityOverview),activeTrip()?.destination||'')}catch(err){}}
+    if(d.wishConfig)wishSettingsModal(d.wishConfig);
     if(d.wishToggle){try{const item=JSON.parse(d.wishItem),current=getWishlistEntry(d.wishToggle,item);setWishlistSelection(d.wishToggle,item,!current,current?.priority||'high')}catch(err){}}
     if(d.wishRemove){const t=activeTrip();if(t){t.wishlist=(t.wishlist||[]).filter(x=>x.key!==d.wishRemove);persistSoon();renderDiscover()}}
     if(d.addCity){try{addCitySuggestion(JSON.parse(d.addCity))}catch(err){}}

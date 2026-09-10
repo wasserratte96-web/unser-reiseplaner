@@ -1,25 +1,50 @@
 name: Projekt prüfen
-
+run-name: ${{ inputs.request_id || github.sha }}
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Zu prüfender Commit
+        required: true
+        type: string
+      request_id:
+        description: Eindeutige Build-Anforderung
+        required: true
+        type: string
 permissions:
   contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
           cache: gradle
-      - name: Debug-Build prüfen
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Angeforderten Commit prüfen
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          if [ -n "$SOURCE_SHA" ]; then
+            test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          fi
+      - name: Android-SDK vorbereiten
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Projekt, Regressionen und Android-Build prüfen
+        run: bash tools/verify.sh --android
+      - name: Prüf-APK bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unser-Reiseplaner-Debug-Pruefung
+          path: app/build/outputs/apk/debug/app-debug.apk

@@ -1,87 +1,113 @@
 name: Build & Release Unser Reiseplaner
-
+run-name: ${{ inputs.request_id }}
 on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: 'Versionsnummer, z. B. 1.1.0'
+        description: Versionsnummer des Quellcodes
         required: true
-        default: '1.2.0'
+        default: '1.3.0'
+        type: string
+      source_sha:
+        description: Vollständiger Commit-SHA des geprüften Quellcodes
+        required: true
+        type: string
+      request_id:
+        description: Eindeutige Build-Anforderung
+        required: true
         type: string
       release_notes:
-        description: 'Kurze Beschreibung der Änderungen'
+        description: Beschreibung der Änderungen
         required: false
         default: 'Update von Unser Reiseplaner'
         type: string
-
 permissions:
   contents: write
-
+concurrency:
+  group: unser-reiseplaner-release
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Quellcode laden
-        uses: actions/checkout@v5
-
-      - name: Java einrichten
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha }}
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
           cache: gradle
-
-      - name: Signatur-Secrets prüfen
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Version und Quellcode prüfen
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          node -e 'const v=require("./VERSION.json"); if(!/^\d+\.\d+\.\d+$/.test(process.env.VERSION_NAME)||v.versionName!==process.env.VERSION_NAME)process.exit(1)'
+          node tools/validate-project.cjs
+          node --test tests/*.test.cjs
+      - name: Android-SDK vorbereiten
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Bestehenden Signaturschlüssel bereitstellen
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          test -n "$KEYSTORE_B64" || (echo "ANDROID_KEYSTORE_BASE64 fehlt" && exit 1)
-          test -n "$STORE_PASSWORD" || (echo "ANDROID_KEYSTORE_PASSWORD fehlt" && exit 1)
-          test -n "$KEY_ALIAS" || (echo "ANDROID_KEY_ALIAS fehlt" && exit 1)
-          test -n "$KEY_PASSWORD" || (echo "ANDROID_KEY_PASSWORD fehlt" && exit 1)
-
-      - name: Signaturschlüssel bereitstellen
-        env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/unser-reiseplaner-release.jks"
+          test -n "$KEYSTORE_B64" || { echo 'ANDROID_KEYSTORE_BASE64 fehlt'; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo 'ANDROID_KEYSTORE_PASSWORD fehlt'; exit 1; }
+          test -n "$KEY_ALIAS" || { echo 'ANDROID_KEY_ALIAS fehlt'; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo 'ANDROID_KEY_PASSWORD fehlt'; exit 1; }
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/unser-reiseplaner-release.jks"
           chmod 600 "$RUNNER_TEMP/unser-reiseplaner-release.jks"
-
-      - name: Versionscode festlegen
+      - name: Versionscode fortlaufend festlegen
         run: echo "VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
-
-      - name: Release-APK bauen und signieren
+      - name: APK bauen und signieren
         env:
+          VERSION_NAME: ${{ inputs.version_name }}
           URP_KEYSTORE_PATH: ${{ runner.temp }}/unser-reiseplaner-release.jks
           URP_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           URP_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           URP_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          chmod +x gradlew
-          ./gradlew clean assembleRelease \
-            -PciVersionName="${{ inputs.version_name }}" \
-            -PciVersionCode="$VERSION_CODE"
-
-      - name: APK benennen
+          bash gradlew --no-daemon clean assembleRelease lintRelease \
+            -PciVersionName="$VERSION_NAME" -PciVersionCode="$VERSION_CODE"
+      - name: APK-Signatur und Paketversion prüfen
         env:
           VERSION_NAME: ${{ inputs.version_name }}
         run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/release/app-release.apk > "$RUNNER_TEMP/apk-badging.txt"
+          grep -F "name='de.unserreiseplaner.app'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -F "versionName='$VERSION_NAME'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -F "versionCode='$VERSION_CODE'" "$RUNNER_TEMP/apk-badging.txt"
+      - name: APK und vollständigen Quellcode paketieren
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
           mkdir -p release
           cp app/build/outputs/apk/release/app-release.apk "release/Unser_Reiseplaner-${VERSION_NAME}.apk"
-
-      - name: GitHub Release veröffentlichen
+          git archive --format=zip --prefix="Unser_Reiseplaner-${VERSION_NAME}/" "$SOURCE_SHA" > "release/Unser_Reiseplaner-${VERSION_NAME}-Quellcode.zip"
+          cd release
+          sha256sum ./*.apk ./*.zip > SHA256SUMS.txt
+      - name: Release des geprüften Commits veröffentlichen
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION_NAME: ${{ inputs.version_name }}
           RELEASE_NOTES: ${{ inputs.release_notes }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
-          gh release create "v${VERSION_NAME}" \
-            "release/Unser_Reiseplaner-${VERSION_NAME}.apk" \
-            --repo "$GITHUB_REPOSITORY" \
+          printf '%s\n\nQuellcode-Commit: %s\n' "$RELEASE_NOTES" "$SOURCE_SHA" > "$RUNNER_TEMP/release-notes.md"
+          gh release create "v${VERSION_NAME}" release/* \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
             --title "Unser Reiseplaner ${VERSION_NAME}" \
-            --notes "$RELEASE_NOTES" \
-            --latest
+            --notes-file "$RUNNER_TEMP/release-notes.md" --latest
+      - name: Temporären Signaturschlüssel entfernen
+        if: always()
+        run: rm -f "$RUNNER_TEMP/unser-reiseplaner-release.jks"
