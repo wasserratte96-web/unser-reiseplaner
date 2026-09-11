@@ -40,7 +40,12 @@ jobs:
             test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           fi
       - name: Android-SDK vorbereiten
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          test -n "$SDKMANAGER" || { echo 'sdkmanager im Android-SDK nicht gefunden'; exit 1; }
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
       - name: Projekt, Regressionen und Android-Build prüfen
         run: bash tools/verify.sh --android
       - name: Prüf-APK bereitstellen
