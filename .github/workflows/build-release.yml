@@ -51,7 +51,12 @@ jobs:
           node tools/validate-project.cjs
           node --test tests/*.test.cjs
       - name: Android-SDK vorbereiten
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          test -n "$SDKMANAGER" || { echo 'sdkmanager im Android-SDK nicht gefunden'; exit 1; }
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
       - name: Bestehenden Signaturschlüssel bereitstellen
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
