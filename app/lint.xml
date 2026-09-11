@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- MainActivity opts out of predictive back in the manifest so the existing
+         WebView history behavior continues to receive legacy back callbacks. -->
+    <issue id="GestureBackNavigation">
+        <ignore path="src/main/java/de/unserreiseplaner/app/MainActivity.java" />
+    </issue>
+</lint>
