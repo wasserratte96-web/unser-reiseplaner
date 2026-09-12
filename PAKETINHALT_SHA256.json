@@ -1,16 +1,16 @@
 {
-  "version": "1.3.0",
-  "scope": "Alle Dateien dieses Quellcode-ZIPs außer diesem Manifest. Kein Nachweis eines Android-Builds.",
+  "version": "1.3.1",
+  "scope": "Alle Dateien dieses Quellcode-ZIPs außer diesem Manifest. Prüfstatus siehe PRUEFBERICHT_1_3_1.md.",
   "files": [
     {
       "path": ".github/workflows/build-check.yml",
-      "bytes": 1429,
-      "sha256": "67a191e9a33c2b5db888941ff780e87c48201f9165971d783426aea4b5f837bc"
+      "bytes": 2022,
+      "sha256": "42d3186ec2ee83db0706bf529af6d968d50264398ba07533015b37d348c35251"
     },
     {
       "path": ".github/workflows/build-release.yml",
-      "bytes": 5168,
-      "sha256": "fb4b79d42ddb1fbe939132367caa1c0e93512739695dcd8123adba197cb3c121"
+      "bytes": 5685,
+      "sha256": "860479630a9dc6e205799b2b94814339ea69b34e3f1feab12ef247f80507b12d"
     },
     {
       "path": ".gitignore",
@@ -19,8 +19,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 10326,
-      "sha256": "f7647979e2ef74eb21c2424e7d490cd0479793d89e23a8eb3ced6c6b80834fcf"
+      "bytes": 11853,
+      "sha256": "427cfb1e4b44884523ebc1dd0a8de408e9b9fd34867c685ed5b96d43412801e1"
     },
     {
       "path": "DATENQUELLEN.md",
@@ -29,18 +29,23 @@
     },
     {
       "path": "INSTALLATION_ANDROID_STUDIO.md",
-      "bytes": 1828,
-      "sha256": "192d6c333c9acaf6ab6d5548497f8cc83458f58df7adc052774ce80a1121c64d"
+      "bytes": 1749,
+      "sha256": "efa4a68b0677884a89cc425be8d962087fddc388b27343c6e6192bfd17b834ee"
     },
     {
       "path": "PROJEKTKONTEXT.md",
-      "bytes": 4226,
-      "sha256": "5efaeecd86c3d06b4078b6c3528d4efd27cd7b25fab218d3621818b442adbdc8"
+      "bytes": 4820,
+      "sha256": "2e4925538e35b868c602405ce98e9f8c54a6a7f7191c8052f205d711c0cd8cd0"
     },
     {
       "path": "PRUEFBERICHT_1_3_0.md",
       "bytes": 6493,
       "sha256": "bc9c640c3c7906ff983e4c553ff2df3c461a2f3f399acf52e040a684fbc3888d"
+    },
+    {
+      "path": "PRUEFBERICHT_1_3_1.md",
+      "bytes": 5076,
+      "sha256": "2b839529dc174e637847bffd89cf3d167124510ce8a92f35266ced539c381bf9"
     },
     {
       "path": "QUELLSTAND.json",
@@ -49,13 +54,18 @@
     },
     {
       "path": "README.md",
-      "bytes": 3333,
-      "sha256": "7d108fc008db4ac18a97dae08d2ed8abbc71cc580e01707f2f05a225635f3843"
+      "bytes": 3622,
+      "sha256": "a95e400ffd56771fb881c9179c366cc6bf96b922e514d40f4fdacfe34f308c85"
     },
     {
       "path": "TESTERGEBNIS_1_3_0.txt",
       "bytes": 3092,
       "sha256": "d5ef1f4f3d2c0786fed9253707c4bb0c8b687c4492961eb8cde1b78993d34227"
+    },
+    {
+      "path": "TESTERGEBNIS_1_3_1.txt",
+      "bytes": 2983,
+      "sha256": "b64ebd7b3efadce08641e6578ddd5ee4ea56ec7ca425c0674b341b7f4cd6baca"
     },
     {
       "path": "UPDATE_1_1_1_TERMUX.md",
@@ -93,19 +103,24 @@
       "sha256": "fa925d61e34e2deb069a78eb55600fba423c8042557d9ca506ebc5844d54cc6e"
     },
     {
+      "path": "UPDATE_1_3_1_TERMUX.md",
+      "bytes": 3906,
+      "sha256": "f819782e01c915e2bc6150ffadc05c25b794c805c62dd9e5f8ef2c7256e649c5"
+    },
+    {
       "path": "UPDATE_EINRICHTUNG_GITHUB.md",
       "bytes": 3484,
       "sha256": "abfe0cab161859335c58384d7b15e87515453fb476bc9db86d72c6ae53ae74f7"
     },
     {
       "path": "VERSION.json",
-      "bytes": 95,
-      "sha256": "bc7968e06ebe3d2ccff74bd334e374fcb044f09f8b6a1a2ffda8ae59b3db31bf"
+      "bytes": 96,
+      "sha256": "bd293b7186039a89392e51df04bdfb1e8955e3cf66357add21254845bd0bd282"
     },
     {
       "path": "app/build.gradle",
-      "bytes": 1269,
-      "sha256": "13b88d6f4aa1932434d3b2ec7738ac24940231ba31a1bf616e9285768b4a557a"
+      "bytes": 1343,
+      "sha256": "a93ffe2891c5d635c8c3c548bf98877e25695b27466906fda4d17ea03a341631"
     },
     {
       "path": "app/proguard-rules.pro",
@@ -114,8 +129,8 @@
     },
     {
       "path": "app/src/main/AndroidManifest.xml",
-      "bytes": 795,
-      "sha256": "c17ba347f02ea247d87d63ffd00def64ad8b1e6128698f446e16ca94a2f4d92b"
+      "bytes": 850,
+      "sha256": "c76f231902400eaaa9ae716bffae1253f1f3f427f4d26bb247cf11417bc6a60e"
     },
     {
       "path": "app/src/main/assets/www/css/app.css",
@@ -129,8 +144,8 @@
     },
     {
       "path": "app/src/main/assets/www/js/app.js",
-      "bytes": 176438,
-      "sha256": "65075a409c499a800501694ccb90344fe30f772c1e4cf1c48acec4d90301808f"
+      "bytes": 176439,
+      "sha256": "a93685f273fa170d66503f25333b3da95cffbb99d54d4629b4a9646fab661561"
     },
     {
       "path": "app/src/main/assets/www/js/planner-core.js",
@@ -144,8 +159,8 @@
     },
     {
       "path": "app/src/main/java/de/unserreiseplaner/app/MainActivity.java",
-      "bytes": 23018,
-      "sha256": "e072078af9f7e4d329bd013db41138133f2bd16567003fe583d22817543c1129"
+      "bytes": 23816,
+      "sha256": "2e55d8928e040edbc3c8f05bf8f560fcaf9a14954b8c02debada0ddd87bddafa"
     },
     {
       "path": "app/src/main/res/drawable/ic_launcher.xml",
@@ -184,8 +199,8 @@
     },
     {
       "path": "gradle.properties",
-      "bytes": 110,
-      "sha256": "cc38bc495ca4e4d7fa2fe7c9c1112f36af7a63fbf4fc3e7a088e215942403385"
+      "bytes": 109,
+      "sha256": "e6b436ff6a08da8b8c05e0e2fc1a7f40f41701bb506cd80fc2ddfd7b6e3b3b2b"
     },
     {
       "path": "gradlew",
@@ -200,7 +215,7 @@
     {
       "path": "package.json",
       "bytes": 288,
-      "sha256": "73e8c56596c9a5869a02ee3c5a405d42a228e8070b0b832d520de4b106c2ba7e"
+      "sha256": "6a9bc2723b1114c4ae89bdfed769d3adf528c87dfa2b7f1eac613f34b123bdd5"
     },
     {
       "path": "settings.gradle",
@@ -234,23 +249,23 @@
     },
     {
       "path": "tools/apply-update.sh",
-      "bytes": 1877,
-      "sha256": "e94a6ef006e6831a356dba4e7a48bd1d6895abc46f550a38db90985bb902a11f"
+      "bytes": 1883,
+      "sha256": "93a40019f77636f40c8520e40467e4194282ce443f9c2e5904dc2395737ada3a"
     },
     {
       "path": "tools/publish-mobile.sh",
-      "bytes": 3071,
-      "sha256": "f07e23a7b7de1deddb6caf45e56064e7338f7b67426f2e530b037a18efca0218"
+      "bytes": 3117,
+      "sha256": "c67fbddcd8c0c4eac4436c4bb439b012f5c49cd82b3fec593a8a87d4c3fb60ec"
     },
     {
       "path": "tools/validate-project.cjs",
-      "bytes": 2451,
-      "sha256": "514e97b481e01c6bc9250dde59da880aa71fb12a9187533adca1bcd069386abf"
+      "bytes": 2489,
+      "sha256": "e7527caf16cebb4a8dd7f358223aba7034b2bebca3428c082dedda21ed18c458"
     },
     {
       "path": "tools/verify.sh",
-      "bytes": 346,
-      "sha256": "000acd0bef5076696ea45a52ab973ec15dde81a44168fda2105f17c56eb773c9"
+      "bytes": 374,
+      "sha256": "3823af203082b9dc5ceb0cf4246b807d30d799112771315d3730e7888b7d9bbf"
     }
   ]
 }

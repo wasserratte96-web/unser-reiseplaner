@@ -1,6 +1,8 @@
-# Unser Reiseplaner – Version 1.3.0
+# Unser Reiseplaner – Version 1.3.1
 
 Vollständiges Android-Quellcodeprojekt auf Basis von Version 1.2.0. Schwerpunkt: aus Prioritäten eine zeitlich nachvollziehbare Route erzeugen und bekannte Fehler ohne Verlust der vorhandenen Funktionen beheben.
+
+Version 1.3.1 behebt den GitHub-Buildabbruch `sdkmanager: command not found`, modernisiert die native Zurück-Navigation und unterstützt das Update vom bereits hochgeladenen Quellstand 1.3.0. Alle nachstehenden Funktionsverbesserungen aus 1.3.0 sind enthalten.
 
 ## Was sich ändert
 
@@ -29,15 +31,15 @@ Mit Android SDK 36 / Build Tools 36.0.0 und JDK 21:
 bash tools/verify.sh --android
 ```
 
-Alternativ den entpackten Projektordner in Android Studio öffnen. `INSTALLATION_ANDROID_STUDIO.md` beschreibt den Build. `UPDATE_1_3_0_TERMUX.md` beschreibt den vollständigen Smartphone-Weg.
+Alternativ den entpackten Projektordner in Android Studio öffnen. `INSTALLATION_ANDROID_STUDIO.md` beschreibt den Build. `UPDATE_1_3_1_TERMUX.md` beschreibt den vollständigen Smartphone-Weg.
 
 ## Inhalt und Prüfstatus
 
 - `CHANGELOG.md`: neue Änderungen und rekonstruierte Versionshistorie.
 - `PROJEKTKONTEXT.md` / `QUELLSTAND.json`: verbindliche Anforderungen und Ausgangspakete.
 - `DATENQUELLEN.md`: Zuordnung, Schätzungen und Grenzen der Anbieter.
-- `PRUEFBERICHT_1_3_0.md`: durchgeführte Tests und noch offene Prüfungen.
+- `PRUEFBERICHT_1_3_1.md`: durchgeführte Tests und noch offene Prüfungen.
 - `tests/`: Regressionen und Datenquellenverträge; `tools/`: Prüfung und Smartphone-Update.
 - Native App, Ressourcen, Web-Oberfläche, Gradle-Wrapper und beide GitHub-Workflows sind vollständig enthalten.
 
-**Noch kein nachgewiesener APK-Build dieser Lieferung:** In der Entwicklungsumgebung war der Gradle-/SDK-Zugriff nicht möglich; die visuelle Browserprüfung war gesperrt. Es wurde keine APK gebaut oder veröffentlicht. Erst der erfolgreiche mitgelieferte CI-Ablauf plus Android-Geräteprüfung bestätigt die installierbare Version. Details und weiterhin offene Produktgrenzen stehen im Prüfbericht.
+Debug- und Release-Build, beide Lint-Prüfungen und 31 Funktionstests wurden im [GitHub-Lauf 34500418773](https://github.com/wasserratte96-web/unser-reiseplaner/actions/runs/34500418773) erfolgreich geprüft. Der Nachweis steht in `PRUEFBERICHT_1_3_1.md`. Für das Update über eine vorhandene Installation die signierte APK des Release-Workflows verwenden. Die Geräteprüfung auf Pixel 6 Pro / Android 17 bleibt erforderlich.

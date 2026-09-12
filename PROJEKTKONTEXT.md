@@ -29,6 +29,8 @@ Diese Wünsche dürfen nicht als fest codierte Einschränkungen für sämtliche 
 
 ## Quellenstand und Fortsetzung
 
+Am 10. September 2026 wurde der verbundene GitHub-Stand geprüft: Commit `d07691e0537ab1414606609edfe5499d839f0243` enthält 1.3.0 und stimmt in allen 51 Dateien mit der gelieferten Arbeitskopie überein. Der anschließend fehlgeschlagene Build `34498507782` meldet `sdkmanager: command not found`. Version 1.3.1 korrigiert die SDK-Einrichtung und unterstützt das Fortsetzen des Smartphone-Updates von Quellstand 1.3.0. Gerät: Pixel 6 Pro, Android 17; installierte Ausgangsversion laut Nutzer 1.2.0. Die folgenden Absätze dokumentieren den früheren Kenntnisstand bei Erstellung von 1.3.0.
+
 Alle acht verfügbaren Quellcodepakete wurden gegenübergestellt: 1.0.0, 1.1.0, 1.1.1, 1.1.2, 1.1.3, 1.1.4, 1.1.5, 1.2.0. Grundlage von 1.3.0 ist das vollständige 1.2.0-Paket, nicht die ältere eigenständige README-Datei 1.1.4. `QUELLSTAND.json` enthält die SHA-256-Prüfsummen der Ausgangspakete.
 
 Der vollständige Wortlaut aller früheren Chats und der aktuelle Remote-Commit lagen nicht vor. Verfügbarer Gesprächskontext, Anforderungen, Versionen und Fehlerbeschreibungen wurden berücksichtigt; nicht belegbare frühere Entscheidungen wurden nicht erfunden. Eine belastbare Auswertung des App-Marktvergleichs vom 6. September lag ebenfalls nicht vor und wird nicht als bereits umgesetzter Backlog ausgegeben.

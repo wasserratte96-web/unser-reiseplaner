@@ -6,7 +6,7 @@ on:
       version_name:
         description: Versionsnummer des Quellcodes
         required: true
-        default: '1.3.0'
+        default: '1.3.1'
         type: string
       source_sha:
         description: Vollständiger Commit-SHA des geprüften Quellcodes
@@ -51,12 +51,18 @@ jobs:
           node tools/validate-project.cjs
           node --test tests/*.test.cjs
       - name: Android-SDK vorbereiten
-        shell: bash
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          cmdline-tools-version: '14742923'
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          log-accepted-android-sdk-licenses: 'false'
+      - name: Android-SDK prüfen
         run: |
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
-          test -n "$SDKMANAGER" || { echo 'sdkmanager im Android-SDK nicht gefunden'; exit 1; }
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+          command -v sdkmanager
+          test -n "${ANDROID_HOME:-}"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/aapt"
       - name: Bestehenden Signaturschlüssel bereitstellen
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
