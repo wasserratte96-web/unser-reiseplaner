@@ -60,7 +60,7 @@ test('a failed highlight subquery preserves cultural landmarks from successful q
 test('migration and import preserve legacy flights and target species without sharing objects',()=>{
   const {app}=load();const old={schema:4,trips:[{id:'t',targetSpecies:[{taxonId:123,name:'Quokka'}],versions:[{id:'v',flights:[{id:'f',number:'QF9'}],days:[{id:'d',stops:[]}]}]}]};
   const normalized=app.normalizeLoadedState(old);
-  assert.equal(normalized.schema,6);assert.equal(normalized.trips[0].wishlist[0].item.taxonId,123);assert.equal(normalized.trips[0].versions[0].flights[0].number,'QF9');
+  assert.equal(normalized.schema,7);assert.equal(normalized.trips[0].wishlist[0].item.taxonId,123);assert.equal(normalized.trips[0].versions[0].flights[0].number,'QF9');
   assert.equal(old.schema,4);assert.equal(old.trips[0].wishlist,undefined);
   assert.throws(()=>app.normalizeLoadedState({trips:[{versions:[]} ,{versions:[{days:[{}]}]}]}));
 });

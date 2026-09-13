@@ -5,8 +5,8 @@ const vm = require('node:vm');
 module.exports = function loadApp(project = path.resolve(__dirname, '..')) {
   const elements = new Map();
   const timers=[];
-  const element = () => ({textContent:'',innerHTML:'',value:'',dataset:{},style:{},
-    classList:{add(){},remove(){},toggle(){}},addEventListener(){},appendChild(){},insertAdjacentHTML(){}});
+  const element = () => ({textContent:'',innerHTML:'',value:'',dataset:{},style:{},options:[],
+    classList:{add(){},remove(){},toggle(){},contains(){return true;}},addEventListener(){},appendChild(){},insertAdjacentHTML(){},setAttribute(){},focus(){},querySelectorAll(){return[];},querySelector(){return null;}});
   const context = {console, URL, Date, Math, Set, Map, JSON, Promise,
     setTimeout:(callback,delay=0)=>{timers.push({callback,delay});return timers.length;},clearTimeout(id){timers[id-1]=null;},
     document:{readyState:'loading',addEventListener(){},querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll:()=>[],createElement:element},
@@ -15,10 +15,13 @@ module.exports = function loadApp(project = path.resolve(__dirname, '..')) {
   vm.createContext(context);
   const core=path.join(project,'app/src/main/assets/www/js/planner-core.js');
   if(fs.existsSync(core))vm.runInContext(fs.readFileSync(core,'utf8'),context);
+  const discovery=path.join(project,'app/src/main/assets/www/js/discovery-core.js');
+  if(fs.existsSync(discovery))vm.runInContext(fs.readFileSync(discovery,'utf8'),context);
   const file=path.join(project,'app/src/main/assets/www/js/app.js');
   let source=fs.readFileSync(file,'utf8');
   const exports=['loadState','emptyState','sampleTrip','setWishlistSelection','resolveWishlistNodes','buildAutomaticRoute','computeDay','dayConstraints','cloneVersion','planningIssueCount','objectOpenIssues','accommodationsForDate','daysBetween','addDays','Providers','wishlistKey','versionMetrics'];
   if(source.includes('function normalizeLoadedState('))exports.push('normalizeLoadedState','publicWildObservation','invalidateStopRoutes','getWishlistEntry','connectionModal','transferModal','showModal','closeModal','openSuggestionDetail','persistSoon','refreshDayRoutes','syncConnectionTransfers');
+  if(source.includes('function searchPoints('))exports.push('searchPoints','submitPoiSearch','resetDiscoverySearch','renderSearchResults','customWishModal','addCountryForItem','discoveryCountry','wishSettingsModal','makeAutoStop','editTripCountries');
   source=source.replace(/\n\}\)\(\);\s*$/,`\nwindow.appTest={${exports.join(',')},setState:s=>state=s,getState:()=>state};\n})();`);
   vm.runInContext(source,context,{filename:file});
   const app=context.appTest;
