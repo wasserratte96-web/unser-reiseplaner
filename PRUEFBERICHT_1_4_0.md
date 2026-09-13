@@ -6,7 +6,15 @@ Grundlage ist GitHub main `646f92b607ecc81b3cbc640878367c55cb485121` (1.3.1). Al
 
 48 automatisierte Funktionstests bestehen. Dazu gehören sämtliche 31 bisherigen Tests. Neue Prüfungen behandeln Migration, Länderfilter, eigene Orte, Schutz vor verspäteten Suchantworten, Teilausfälle, Tieridentitäten, Mehrländer-Routen, manuelle Reihenfolge, Aktivitätenbudget und Fotozeitfenster einschließlich späterer Änderungen im tatsächlichen Tagesplaner. Versions- und Strukturprüfung sowie Shell-Syntax werden durch `tools/verify.sh` geprüft.
 
-Android-Buildstatus wird nach dem GitHub-Prüflauf ergänzt. Eine Debug-Prüf-APK ist kein signiertes Update der installierten Release-App.
+Android-Prüflauf erfolgreich: https://github.com/wasserratte96-web/unser-reiseplaner/actions/runs/34757929864
+
+Geprüfter Commit: `d9b74a78bebd28865f7431b5d18ee42c022bf202`, Vorschlag: https://github.com/wasserratte96-web/unser-reiseplaner/pull/2 . Der Workflow führt Struktur-/Versionsprüfung, alle 48 Funktionstests sowie `assembleDebug`, `lintDebug`, `assembleRelease` und `lintRelease` aus. Die installierbare Veröffentlichung mit dem bisherigen Release-Schlüssel erfolgt erst über den mitgelieferten Termux-Weg. Eine Debug-Prüf-APK ist kein signiertes Update der installierten Release-App.
+
+Nach dem geprüften Commit werden ausschließlich Prüfdokumentation und Paketprüfsummen ergänzt. App-Code, Tests, Gradle und Workflows des ZIPs werden mit dem geprüften Commit abgeglichen.
+
+## ZIP und Update-Probelauf
+
+Das vollständige Paket enthält 62 Dateien. Aus einem separat entpackten ZIP bestehen alle 48 Tests; Dateiprüfsummen sind geprüft. Ein Probelauf mit einem separaten 1.3.1-Checkout bestätigt den Quellcode-Backup, die Übernahme aller Update-Dateien und den Erhalt lokaler SDK-Konfiguration, Schlüsseldateien und Build-Zusatzdateien. Bei eigenen Änderungen wurde das Einspielen wie vorgesehen abgebrochen. Dabei wurden keine Commits zum Hauptzweig übertragen und kein Release veröffentlicht.
 
 ## Grenzen
 
