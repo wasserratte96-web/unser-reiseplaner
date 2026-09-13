@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.0 – Entdecken, Länder und Fotografie
+
+- Neue Oberfläche mit fünf Hauptbereichen: Reisen, Entdecken, Wünsche, Plan und Karte. Große Fotokarten beim Entdecken, kompakte Tagesplanung und ausklappbare Details.
+- Sichtbare manuelle Suche nach Städten, Sehenswürdigkeiten und Tierarten: alle Reiseländer, einzelnes Land oder weltweit. Tierarten werden über iNaturalist-Taxon-IDs identifiziert; ein Suchtreffer ist keine lokale Sichtung.
+- Eigene Wünsche und Orte mit Name, Land, Kategorie, Priorität, Aufenthaltsdauer und optionalen Koordinaten. Fehlende Standorte bleiben sichtbar offen; eigene Einträge sind nachträglich bearbeitbar.
+- Mehrere Länder pro Reise, Migration alter Reisen und Länderzuordnung zu Wünschen, Stopps und Verbindungen. Globale Suchtreffer können weitere Reiseländer ergänzen.
+- Routenvorschläge nach geografischer Nähe oder eigener Wunschlisten-Reihenfolge. Tagesbudget für Aktivitäten und Fahrten, einstellbare Tageszeiten; Länderwechsel werden zur Prüfung markiert.
+- Foto-Motive: Landschaft, Tierfotografie, Street-Photography, Architektur und Nachtfotografie. Aufnahmehinweise und selbst festgelegte Zeitfenster werden gespeichert und im Generator eingehalten; nicht passende Wünsche erhalten Gründe.
+- Fotozeitfenster gelten auch bei späteren Änderungen im Tagesplan: flexible Stopps bleiben im Fenster, widersprechende Fixzeiten und zu lange Aufenthalte werden als Konflikt angezeigt.
+- Suchantworten können neuere Suchen nicht überschreiben. Teilausfälle der Datenquellen erhalten erfolgreiche Treffer. Getrennte Suchcaches nach Gebiet und Suchdienst; Nominatim-kompatibler Dienst ohne App-Update wechselbar.
+- Zustandsformat 7; vorhandene Reisen, Reisevarianten, Flüge, Unterkünfte und Transfers bleiben erhalten. Neue Routen sind eigenständige Varianten.
+- Marktvergleich und Produktstrategie einschließlich Fotografie im Ordner `docs`.
+
+Grenzen: Noch keine automatische Licht-/Wetterplanung, Fotospot-Datenbank oder Zeitzonenberechnung. Flug-/Fährverfügbarkeit und bestehende Buchungen werden vom Generator nicht übernommen. Länderwechsel sind planbar, müssen zeitlich und verkehrstechnisch geprüft werden. Geräteprüfung separat durchführen.
+
 ## 1.3.1 – 2026-09-10
 
 - GitHub-Buildfehler `sdkmanager: command not found` (Exit 127) behoben: Prüf- und Release-Workflow richten die Android-Kommandozeilenwerkzeuge, Lizenzen, SDK-Pfade, API 36 und Build Tools 36.0.0 ausdrücklich ein.

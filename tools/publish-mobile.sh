@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 urp_version="${1:-}"
-urp_notes="${2:-Unser Reiseplaner 1.3.1: Android-SDK-Einrichtung und Smartphone-Update repariert; alle Verbesserungen aus 1.3.0 enthalten.}"
+urp_notes="${2:-Unser Reiseplaner 1.4.0: neue Oberfläche, manuelle POI-Suche, eigene Orte, Reisen über mehrere Länder und Fotozeitfenster.}"
 urp_repo='wasserratte96-web/unser-reiseplaner'
-[[ "$urp_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Aufruf: bash tools/publish-mobile.sh 1.3.1 "Beschreibung"'; exit 2; }
+[[ "$urp_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Aufruf: bash tools/publish-mobile.sh 1.4.0 "Beschreibung"'; exit 2; }
 cd "$(git rev-parse --show-toplevel)"
 [[ "$(git branch --show-current)" == main ]] || { echo 'Bitte im vorgesehenen main-Checkout ausführen.'; exit 1; }
 urp_remote="$(git remote get-url origin)"

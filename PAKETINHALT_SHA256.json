@@ -1,271 +1,66 @@
 {
-  "version": "1.3.1",
-  "scope": "Alle Dateien dieses Quellcode-ZIPs außer diesem Manifest. Prüfstatus siehe PRUEFBERICHT_1_3_1.md.",
-  "files": [
-    {
-      "path": ".github/workflows/build-check.yml",
-      "bytes": 2022,
-      "sha256": "42d3186ec2ee83db0706bf529af6d968d50264398ba07533015b37d348c35251"
-    },
-    {
-      "path": ".github/workflows/build-release.yml",
-      "bytes": 5685,
-      "sha256": "860479630a9dc6e205799b2b94814339ea69b34e3f1feab12ef247f80507b12d"
-    },
-    {
-      "path": ".gitignore",
-      "bytes": 197,
-      "sha256": "7dee4e44e6c85af7d63f26b80f4102b2c38085c1d0164a3d29c291e3671fe238"
-    },
-    {
-      "path": "CHANGELOG.md",
-      "bytes": 11853,
-      "sha256": "427cfb1e4b44884523ebc1dd0a8de408e9b9fd34867c685ed5b96d43412801e1"
-    },
-    {
-      "path": "DATENQUELLEN.md",
-      "bytes": 5376,
-      "sha256": "802d1d36ec549459254a68588a6c0b9d77f1a940afeaf7d68073a47eb4345850"
-    },
-    {
-      "path": "INSTALLATION_ANDROID_STUDIO.md",
-      "bytes": 1749,
-      "sha256": "efa4a68b0677884a89cc425be8d962087fddc388b27343c6e6192bfd17b834ee"
-    },
-    {
-      "path": "PROJEKTKONTEXT.md",
-      "bytes": 4820,
-      "sha256": "2e4925538e35b868c602405ce98e9f8c54a6a7f7191c8052f205d711c0cd8cd0"
-    },
-    {
-      "path": "PRUEFBERICHT_1_3_0.md",
-      "bytes": 6493,
-      "sha256": "bc9c640c3c7906ff983e4c553ff2df3c461a2f3f399acf52e040a684fbc3888d"
-    },
-    {
-      "path": "PRUEFBERICHT_1_3_1.md",
-      "bytes": 5076,
-      "sha256": "2b839529dc174e637847bffd89cf3d167124510ce8a92f35266ced539c381bf9"
-    },
-    {
-      "path": "QUELLSTAND.json",
-      "bytes": 1554,
-      "sha256": "e781c81aaaa2ae892b3468066d8330b66c6ae3d93fe10159185689993821447d"
-    },
-    {
-      "path": "README.md",
-      "bytes": 3622,
-      "sha256": "a95e400ffd56771fb881c9179c366cc6bf96b922e514d40f4fdacfe34f308c85"
-    },
-    {
-      "path": "TESTERGEBNIS_1_3_0.txt",
-      "bytes": 3092,
-      "sha256": "d5ef1f4f3d2c0786fed9253707c4bb0c8b687c4492961eb8cde1b78993d34227"
-    },
-    {
-      "path": "TESTERGEBNIS_1_3_1.txt",
-      "bytes": 2983,
-      "sha256": "b64ebd7b3efadce08641e6578ddd5ee4ea56ec7ca425c0674b341b7f4cd6baca"
-    },
-    {
-      "path": "UPDATE_1_1_1_TERMUX.md",
-      "bytes": 1393,
-      "sha256": "bede5d8abc1d849830a9b9a5b0fb8d5ff608e20b5d6738c3e62ae7e05cc07d86"
-    },
-    {
-      "path": "UPDATE_1_1_2_TERMUX.md",
-      "bytes": 737,
-      "sha256": "cd579600efde6340ccacabf5224a67d986611b49f74bc7a920f3ee8daea84bb1"
-    },
-    {
-      "path": "UPDATE_1_1_3_TERMUX.md",
-      "bytes": 709,
-      "sha256": "bae52c646656c04e9b5f7b76161a051ea7be84a31a143e259b4967d0ded21610"
-    },
-    {
-      "path": "UPDATE_1_1_4_TERMUX.md",
-      "bytes": 745,
-      "sha256": "82598ec86460cfc78f1024ea1affc2535426fcdf77870828580b25ca3e52916d"
-    },
-    {
-      "path": "UPDATE_1_1_5_TERMUX.md",
-      "bytes": 872,
-      "sha256": "855a070d87ca371bd3d75b4c945a4c39669c8d9ca0f1fde5ea73fe77dd4997a1"
-    },
-    {
-      "path": "UPDATE_1_2_0_TERMUX.md",
-      "bytes": 826,
-      "sha256": "7a9c180874ba0bf99f7bf7de269e44f18c47f188d842e58a9360f6afeb64d91a"
-    },
-    {
-      "path": "UPDATE_1_3_0_TERMUX.md",
-      "bytes": 4274,
-      "sha256": "fa925d61e34e2deb069a78eb55600fba423c8042557d9ca506ebc5844d54cc6e"
-    },
-    {
-      "path": "UPDATE_1_3_1_TERMUX.md",
-      "bytes": 3906,
-      "sha256": "f819782e01c915e2bc6150ffadc05c25b794c805c62dd9e5f8ef2c7256e649c5"
-    },
-    {
-      "path": "UPDATE_EINRICHTUNG_GITHUB.md",
-      "bytes": 3484,
-      "sha256": "abfe0cab161859335c58384d7b15e87515453fb476bc9db86d72c6ae53ae74f7"
-    },
-    {
-      "path": "VERSION.json",
-      "bytes": 96,
-      "sha256": "bd293b7186039a89392e51df04bdfb1e8955e3cf66357add21254845bd0bd282"
-    },
-    {
-      "path": "app/build.gradle",
-      "bytes": 1343,
-      "sha256": "a93ffe2891c5d635c8c3c548bf98877e25695b27466906fda4d17ea03a341631"
-    },
-    {
-      "path": "app/proguard-rules.pro",
-      "bytes": 38,
-      "sha256": "0720cba19e34a85e9ab08b1c25ec297cb33c749a69c4ee39f497e6afd13c8ec8"
-    },
-    {
-      "path": "app/src/main/AndroidManifest.xml",
-      "bytes": 850,
-      "sha256": "c76f231902400eaaa9ae716bffae1253f1f3f427f4d26bb247cf11417bc6a60e"
-    },
-    {
-      "path": "app/src/main/assets/www/css/app.css",
-      "bytes": 19255,
-      "sha256": "1f43a9b59addb6e0b65c371e99e33f4679ae2819cccaecc1eb71ed26f3883ebf"
-    },
-    {
-      "path": "app/src/main/assets/www/index.html",
-      "bytes": 9070,
-      "sha256": "2427fb5e63403d62ebf23c29fdd6edc7e1a40a3169c2913c1ca8c4357cd2f77a"
-    },
-    {
-      "path": "app/src/main/assets/www/js/app.js",
-      "bytes": 176439,
-      "sha256": "a93685f273fa170d66503f25333b3da95cffbb99d54d4629b4a9646fab661561"
-    },
-    {
-      "path": "app/src/main/assets/www/js/planner-core.js",
-      "bytes": 9191,
-      "sha256": "207994c99a85c652e29d600d1f7363a7b890aa60cf059941e342df943b88d4fe"
-    },
-    {
-      "path": "app/src/main/java/de/unserreiseplaner/app/DatabaseHelper.java",
-      "bytes": 1543,
-      "sha256": "94c02c32c487bcd0cb8d59e866fd9539ef1866211d469fabe6dfaa37d5bdcd15"
-    },
-    {
-      "path": "app/src/main/java/de/unserreiseplaner/app/MainActivity.java",
-      "bytes": 23816,
-      "sha256": "2e55d8928e040edbc3c8f05bf8f560fcaf9a14954b8c02debada0ddd87bddafa"
-    },
-    {
-      "path": "app/src/main/res/drawable/ic_launcher.xml",
-      "bytes": 591,
-      "sha256": "d07d90fa5dffc9cadef6126f9171bc61a00f1c1050e103c43ecf2bd4c3378aa2"
-    },
-    {
-      "path": "app/src/main/res/values/colors.xml",
-      "bytes": 150,
-      "sha256": "6dd4c7051a7463405a0191cf7e3829e5ab502e597adc971b674403d97050a8c4"
-    },
-    {
-      "path": "app/src/main/res/values/strings.xml",
-      "bytes": 80,
-      "sha256": "20c606ed883d72bc84a5ba5b16de6244875231d8e9b262644e3bd9a8e2f2d29e"
-    },
-    {
-      "path": "app/src/main/res/values/styles.xml",
-      "bytes": 414,
-      "sha256": "e1a254cffdcb12954d402050497d9265d75ce0bd6aa16732fb91e41dd59fa7b0"
-    },
-    {
-      "path": "build.gradle",
-      "bytes": 73,
-      "sha256": "a4443c297eb595c0b78a714e9b3bdbae8160b4088890514389283075df06f385"
-    },
-    {
-      "path": "gradle/wrapper/gradle-wrapper.jar",
-      "bytes": 4483,
-      "sha256": "c0932d1dec296dadfd506d652791584d5d92c278a33c173be96ba15166c2209c"
-    },
-    {
-      "path": "gradle/wrapper/gradle-wrapper.properties",
-      "bytes": 252,
-      "sha256": "4d362f1a59d148ce6fde5d62d4bd975e1829a78b28d7a3a72a8cf2d92c90ecda"
-    },
-    {
-      "path": "gradle.properties",
-      "bytes": 109,
-      "sha256": "e6b436ff6a08da8b8c05e0e2fc1a7f40f41701bb506cd80fc2ddfd7b6e3b3b2b"
-    },
-    {
-      "path": "gradlew",
-      "bytes": 158,
-      "sha256": "eb2a705745c97b5fc75a7573dbd6dd7f401f12e5e537b93221709b3dcd2befca"
-    },
-    {
-      "path": "gradlew.bat",
-      "bytes": 114,
-      "sha256": "f63662cbb49656225d002be7a4ef9a70ea6fb229e16375a72900dbb5d8d519bd"
-    },
-    {
-      "path": "package.json",
-      "bytes": 288,
-      "sha256": "6a9bc2723b1114c4ae89bdfed769d3adf528c87dfa2b7f1eac613f34b123bdd5"
-    },
-    {
-      "path": "settings.gradle",
-      "bytes": 336,
-      "sha256": "80c5b39c8ec294aff0ec744952db3435e4e3ff99cfc12f139a2798236459b530"
-    },
-    {
-      "path": "tests/app-harness.cjs",
-      "bytes": 2283,
-      "sha256": "9659cbacbc77c1e6731f48b7fb08878ff4f3ba9d90d77f6607762a1a43c8073a"
-    },
-    {
-      "path": "tests/editing.test.cjs",
-      "bytes": 3540,
-      "sha256": "07c7efdd7d8682c2d319d1b596073bc5dcfd3532b7b9abfa7c9ede50a9a848b2"
-    },
-    {
-      "path": "tests/planner.test.cjs",
-      "bytes": 4140,
-      "sha256": "3eab0d46e297e3e30a994b92071c4fceca322d57651149faccc7f2d62b119fa3"
-    },
-    {
-      "path": "tests/providers.test.cjs",
-      "bytes": 6890,
-      "sha256": "94e26b5891b1a542d07caf599739d07b43c73f0b690fc5775441aff2af55c5af"
-    },
-    {
-      "path": "tests/regressions.test.cjs",
-      "bytes": 3948,
-      "sha256": "df177cf508b66eeaa2a629a3b12e77151c3b08ddeb73c1eff1f5e4152831328e"
-    },
-    {
-      "path": "tools/apply-update.sh",
-      "bytes": 1883,
-      "sha256": "93a40019f77636f40c8520e40467e4194282ce443f9c2e5904dc2395737ada3a"
-    },
-    {
-      "path": "tools/publish-mobile.sh",
-      "bytes": 3117,
-      "sha256": "c67fbddcd8c0c4eac4436c4bb439b012f5c49cd82b3fec593a8a87d4c3fb60ec"
-    },
-    {
-      "path": "tools/validate-project.cjs",
-      "bytes": 2489,
-      "sha256": "e7527caf16cebb4a8dd7f358223aba7034b2bebca3428c082dedda21ed18c458"
-    },
-    {
-      "path": "tools/verify.sh",
-      "bytes": 374,
-      "sha256": "3823af203082b9dc5ceb0cf4246b807d30d799112771315d3730e7888b7d9bbf"
-    }
-  ]
+  "version": "1.4.0",
+  "files": {
+    ".github/workflows/build-check.yml": "42d3186ec2ee83db0706bf529af6d968d50264398ba07533015b37d348c35251",
+    ".github/workflows/build-release.yml": "34040bdfaecb13beba28b1c870163382a5fd1bd4a0db29ba3d5ecd28cc25cb6e",
+    ".gitignore": "7dee4e44e6c85af7d63f26b80f4102b2c38085c1d0164a3d29c291e3671fe238",
+    "CHANGELOG.md": "420063e846529cc12b1cca2d54387bd0da8d6289a527a7d8191f4a16d4cd0a45",
+    "DATENQUELLEN.md": "322a97274336291a3a19967ed6f0124efcbd0fcafc9a8179a9f590edfbaa5679",
+    "INSTALLATION_ANDROID_STUDIO.md": "efa4a68b0677884a89cc425be8d962087fddc388b27343c6e6192bfd17b834ee",
+    "PROJEKTKONTEXT.md": "2e4925538e35b868c602405ce98e9f8c54a6a7f7191c8052f205d711c0cd8cd0",
+    "PRUEFBERICHT_1_3_0.md": "bc9c640c3c7906ff983e4c553ff2df3c461a2f3f399acf52e040a684fbc3888d",
+    "PRUEFBERICHT_1_3_1.md": "2b839529dc174e637847bffd89cf3d167124510ce8a92f35266ced539c381bf9",
+    "PRUEFBERICHT_1_4_0.md": "4d605c65234b8c718db91e23ddcebdb1b42d323f9abdd6aed1f007cd84376b90",
+    "QUELLSTAND.json": "fc8d9b76097c0026f4db06df11a021370c6231c5779c08e84d3a79914e0446f6",
+    "README.md": "a7fbd5a5bc75b79b61bc1d399d8dbb3f823e79859caf2d9443f6cc6eb4076534",
+    "TESTERGEBNIS_1_3_0.txt": "d5ef1f4f3d2c0786fed9253707c4bb0c8b687c4492961eb8cde1b78993d34227",
+    "TESTERGEBNIS_1_3_1.txt": "b64ebd7b3efadce08641e6578ddd5ee4ea56ec7ca425c0674b341b7f4cd6baca",
+    "TESTERGEBNIS_1_4_0.txt": "04df9f9f992e56c7d73e4a219ecfbe682c3ddcbc0ba9454e8f09a171890c9c31",
+    "UPDATE_1_1_1_TERMUX.md": "bede5d8abc1d849830a9b9a5b0fb8d5ff608e20b5d6738c3e62ae7e05cc07d86",
+    "UPDATE_1_1_2_TERMUX.md": "cd579600efde6340ccacabf5224a67d986611b49f74bc7a920f3ee8daea84bb1",
+    "UPDATE_1_1_3_TERMUX.md": "bae52c646656c04e9b5f7b76161a051ea7be84a31a143e259b4967d0ded21610",
+    "UPDATE_1_1_4_TERMUX.md": "82598ec86460cfc78f1024ea1affc2535426fcdf77870828580b25ca3e52916d",
+    "UPDATE_1_1_5_TERMUX.md": "855a070d87ca371bd3d75b4c945a4c39669c8d9ca0f1fde5ea73fe77dd4997a1",
+    "UPDATE_1_2_0_TERMUX.md": "7a9c180874ba0bf99f7bf7de269e44f18c47f188d842e58a9360f6afeb64d91a",
+    "UPDATE_1_3_0_TERMUX.md": "fa925d61e34e2deb069a78eb55600fba423c8042557d9ca506ebc5844d54cc6e",
+    "UPDATE_1_3_1_TERMUX.md": "f819782e01c915e2bc6150ffadc05c25b794c805c62dd9e5f8ef2c7256e649c5",
+    "UPDATE_1_4_0_TERMUX.md": "9c2587cd37d40475b38f6df2a325e73e75548544e6f207fcd98c73045a1cbfec",
+    "UPDATE_EINRICHTUNG_GITHUB.md": "abfe0cab161859335c58384d7b15e87515453fb476bc9db86d72c6ae53ae74f7",
+    "VERSION.json": "716dbf457ea8eae1a08dac1adbb17413e38b7c9d6bd5dde36761a510647d8a5d",
+    "app/build.gradle": "7231862e483c326e50e27680576de0f473906f4080fc0e12fb8881de784407ec",
+    "app/lint.xml": "2c68ea5f23568f9728628432e98a78f7e74f5610789ffc2b79aeb266e47e2575",
+    "app/proguard-rules.pro": "0720cba19e34a85e9ab08b1c25ec297cb33c749a69c4ee39f497e6afd13c8ec8",
+    "app/src/main/AndroidManifest.xml": "c76f231902400eaaa9ae716bffae1253f1f3f427f4d26bb247cf11417bc6a60e",
+    "app/src/main/assets/www/css/app.css": "1f43a9b59addb6e0b65c371e99e33f4679ae2819cccaecc1eb71ed26f3883ebf",
+    "app/src/main/assets/www/css/redesign.css": "bcc74bb8ceb673f0268155083baca549c9b4950077a195fd01260357553712ca",
+    "app/src/main/assets/www/index.html": "b3dc9193a5a720d0b34d3494519243a6f7b079401758dd005f1147f17fbdceaf",
+    "app/src/main/assets/www/js/app.js": "df6091592b89383e607d7f87bbfd6be693f48763da1f815f8053841ff9fd8542",
+    "app/src/main/assets/www/js/discovery-core.js": "3455a56e5c1f8904d693d9cb17a93e7a3bcbe5ef1c47faf93558bc6e7e59c1b8",
+    "app/src/main/assets/www/js/planner-core.js": "df94450f0a90e833739887c939e515f2af9d291ee996189b52d39ba3822b2751",
+    "app/src/main/java/de/unserreiseplaner/app/DatabaseHelper.java": "94c02c32c487bcd0cb8d59e866fd9539ef1866211d469fabe6dfaa37d5bdcd15",
+    "app/src/main/java/de/unserreiseplaner/app/MainActivity.java": "6ba44bf82f150dd35393dbe1b04e6d37e35fb81a21a45aa4ddc9b20d68242866",
+    "app/src/main/res/drawable/ic_launcher.xml": "d07d90fa5dffc9cadef6126f9171bc61a00f1c1050e103c43ecf2bd4c3378aa2",
+    "app/src/main/res/values/colors.xml": "6dd4c7051a7463405a0191cf7e3829e5ab502e597adc971b674403d97050a8c4",
+    "app/src/main/res/values/strings.xml": "20c606ed883d72bc84a5ba5b16de6244875231d8e9b262644e3bd9a8e2f2d29e",
+    "app/src/main/res/values/styles.xml": "e1a254cffdcb12954d402050497d9265d75ce0bd6aa16732fb91e41dd59fa7b0",
+    "build.gradle": "a4443c297eb595c0b78a714e9b3bdbae8160b4088890514389283075df06f385",
+    "docs/MARKTRECHERCHE_1_4_0.md": "3aa60a86f40bdc2523ffeec1168011fc78adcbec5f9272c24f9ad2aa33ca51b1",
+    "gradle.properties": "e6b436ff6a08da8b8c05e0e2fc1a7f40f41701bb506cd80fc2ddfd7b6e3b3b2b",
+    "gradle/wrapper/gradle-wrapper.jar": "c0932d1dec296dadfd506d652791584d5d92c278a33c173be96ba15166c2209c",
+    "gradle/wrapper/gradle-wrapper.properties": "4d362f1a59d148ce6fde5d62d4bd975e1829a78b28d7a3a72a8cf2d92c90ecda",
+    "gradlew": "eb2a705745c97b5fc75a7573dbd6dd7f401f12e5e537b93221709b3dcd2befca",
+    "gradlew.bat": "f63662cbb49656225d002be7a4ef9a70ea6fb229e16375a72900dbb5d8d519bd",
+    "package.json": "5437df11a3243f00fac2a972b04da00d352b15a3a86339c80ad980b7e3411ca2",
+    "settings.gradle": "80c5b39c8ec294aff0ec744952db3435e4e3ff99cfc12f139a2798236459b530",
+    "tests/app-harness.cjs": "9c68c6999ede71cd3d091bd9b88f081454a6f3f7c00e1cb45face09ea8c836d6",
+    "tests/discovery.test.cjs": "4768411a647b08636f78af5a4a4a2d942f800e1b2873d46a43d193356e4a80e8",
+    "tests/editing.test.cjs": "07c7efdd7d8682c2d319d1b596073bc5dcfd3532b7b9abfa7c9ede50a9a848b2",
+    "tests/planner.test.cjs": "3eab0d46e297e3e30a994b92071c4fceca322d57651149faccc7f2d62b119fa3",
+    "tests/providers.test.cjs": "4f076aa60ee7213e5bf755a1d2c7a57dd426f9f46879d681b0c50f0dd93d681d",
+    "tests/regressions.test.cjs": "df177cf508b66eeaa2a629a3b12e77151c3b08ddeb73c1eff1f5e4152831328e",
+    "tools/apply-update.sh": "7c206dc13f7a0da405ec27e0aef48f4473a43f55cb4cba85bf0dfd8e176addcc",
+    "tools/publish-mobile.sh": "2e3ad364581a12e3770d13b5ef87dd2c642b80e57d46f4c26fbdd3ef4594230f",
+    "tools/validate-project.cjs": "6199c4c1e1d0fa625b1495ed6b921f6fd08204b6d7eb4e6e8c8b0b2a0266c53a",
+    "tools/verify.sh": "3823af203082b9dc5ceb0cf4246b807d30d799112771315d3730e7888b7d9bbf"
+  }
 }

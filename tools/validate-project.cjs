@@ -10,7 +10,8 @@ assert.ok(app.includes("versionName:'"+version.versionName+"',versionCode:"+vers
 assert.equal(JSON.parse(read('package.json')).version,version.versionName);
 assert.ok(read('app/src/main/java/de/unserreiseplaner/app/MainActivity.java').includes('UnserReiseplaner/'+version.versionName),'Native Versionsanzeige');
 assert.ok(read('CHANGELOG.md').includes('## '+version.versionName),'Changelog');
-for(const file of ['planner-core.js','app.js'])new vm.Script(read('app/src/main/assets/www/js/'+file),{filename:file});
+for(const file of ['planner-core.js','discovery-core.js','app.js'])new vm.Script(read('app/src/main/assets/www/js/'+file),{filename:file});
+assert.ok(html.indexOf('js/discovery-core.js')<html.indexOf('js/app.js'),'Discovery vor App');
 assert.ok(html.indexOf('js/planner-core.js')<html.indexOf('js/app.js'),'Ladereihenfolge');
 for(const match of html.matchAll(/(?:src|href)="([^"#]+)"/g))if(!/^https?:/.test(match[1]))assert.ok(fs.existsSync(path.join(root,'app/src/main/assets/www',match[1])),match[1]+' fehlt');
 const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length,'Doppelte IDs im Hauptdokument');

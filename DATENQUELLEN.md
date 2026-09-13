@@ -35,3 +35,12 @@ Quellen: [iNaturalist API](https://api.inaturalist.org/v1/docs/), [offizieller A
 Neue Cache-Kennungen trennen die geänderten Länder-/Quellenregeln von älteren Daten. „Neu laden“ verwirft den passenden Inspirationscache. Ein Ausfall darf als Fehler angezeigt werden und erzeugt keine fremden Ersatzinhalte. Standort- und Hoteländerungen machen davon abhängige Strecken-/Transferwerte erneut prüfpflichtig. Die grundlegende SQLite-Datenbank wird nicht ersetzt; alte Daten werden beim Laden beziehungsweise Import angepasst.
 
 Die automatisierten Provider-Tests nutzen kontrollierte Antworten. Die Live-Verfügbarkeit sämtlicher Dienste und der Android-Netzwerkweg wurden in dieser Umgebung nicht bestätigt.
+
+
+## Ergänzungen für 1.4.0
+
+Manuelle Ortssuche: Nominatim mit Länder-Codes, eindeutigen OSM-IDs, Cache und Anfragewarteschlange. Der HTTPS-Suchendpunkt ist in den Einstellungen änderbar. Die öffentliche Instanz hat anwendungsweite Grenzen; vor breiter Verteilung ist ein gemeinsam begrenzter oder vertraglicher Dienst notwendig. Nutzungsregeln: https://operations.osmfoundation.org/policies/nominatim/
+
+Manuelle Tiernamensuche: iNaturalist-Taxon-ID, kein automatisch behauptetes Vorkommen. Inspirationslisten starten mit Säugetieren; Artensuche unterstützt weitere Tiergruppen. Historische Beobachtungen bleiben von Fotografiechancen getrennt. Fotozeitfenster sind selbst eingegeben. Es wurden keine neuen proprietären Foto-Datenbanken oder Wetterdienste integriert.
+
+Marktvergleich, Quellen- und Bildrechtekonzept sowie weiterer Ausbau: docs/MARKTRECHERCHE_1_4_0.md.

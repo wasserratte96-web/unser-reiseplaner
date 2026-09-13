@@ -116,7 +116,7 @@ public class MainActivity extends ComponentActivity {
         settings.setAllowContentAccess(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.3.1");
+        settings.setUserAgentString(settings.getUserAgentString() + " UnserReiseplaner/1.4.0");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -289,7 +289,7 @@ public class MainActivity extends ComponentActivity {
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(60000);
                 connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.3.1 Android updater");
+                connection.setRequestProperty("User-Agent", "UnserReiseplaner/1.4.0 Android updater");
                 int status = connection.getResponseCode();
                 if (status < 200 || status >= 300) throw new IllegalStateException("HTTP " + status);
 
@@ -387,7 +387,7 @@ public class MainActivity extends ComponentActivity {
                     connection.setInstanceFollowRedirects(true);
                     connection.setRequestProperty("Accept", "application/json,text/plain,*/*");
                     connection.setRequestProperty("Accept-Language", "de-DE,de;q=0.9,en;q=0.7");
-                    String agent = "UnserReiseplanerBot/1.3.1 (https://github.com/wasserratte96-web/unser-reiseplaner)";
+                    String agent = "UnserReiseplanerBot/1.4.0 (https://github.com/wasserratte96-web/unser-reiseplaner)";
                     connection.setRequestProperty("User-Agent", agent);
                     if (target.getHost().endsWith("wikipedia.org") || target.getHost().endsWith("wikimedia.org") || target.getHost().endsWith("wikidata.org")) {
                         connection.setRequestProperty("Api-User-Agent", agent);
