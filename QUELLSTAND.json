@@ -1,6 +1,5 @@
 {
-  "base": "Unser_Reiseplaner_V1_2_0_Update.zip",
-  "reviewedAt": "2026-09-09",
+  "reviewedAt": "2026-09-13",
   "archives": [
     {
       "filename": "Unser_Reiseplaner_V1_2_0_Update.zip",
@@ -43,5 +42,11 @@
       "sizeBytes": 47284
     }
   ],
-  "remoteCommitVerified": false
+  "remoteCommitVerified": true,
+  "baseVersion": "1.3.1",
+  "baseCommit": "646f92b607ecc81b3cbc640878367c55cb485121",
+  "baseTree": "2ba43971c828b18dc809b2946375ddadb9c20132",
+  "currentVersion": "1.4.0",
+  "verifiedBaseFiles": 55,
+  "historicalBase": "Unser_Reiseplaner_V1_2_0_Update.zip"
 }

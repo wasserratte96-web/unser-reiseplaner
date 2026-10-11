@@ -1,6 +1,7 @@
 (() => {
 'use strict';
 const Planner = window.URPPlanner;
+const Discovery = window.URPDiscovery;
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -15,7 +16,7 @@ const WISH_PRIORITIES={must:{label:'Muss',weight:4},high:{label:'Hoch',weight:3}
 
 const UPDATE_REPOSITORY = 'wasserratte96-web/unser-reiseplaner';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`;
-let installedAppVersion = {versionName:'1.3.1',versionCode:10,repository:UPDATE_REPOSITORY};
+let installedAppVersion = {versionName:'1.4.0',versionCode:11,repository:UPDATE_REPOSITORY};
 let availableUpdate = null;
 
 let state = null;
@@ -85,7 +86,7 @@ function haversine(a,b){const R=6371,rad=x=>x*Math.PI/180;const dLat=rad(b.lat-a
 function normalizeName(x){return String(x||'').trim().toLowerCase();}
 
 function defaultSettings(){return {defaultStart:'08:00',defaultEnd:'20:00',arrivalBuffer:60,departureBuffer:120};}
-function emptyState(){return {schema:6,activeTripId:null,settings:defaultSettings(),trips:[],cache:{places:{},cities:{},wikidata:{},wildlife:{},photos:{}}};}
+function emptyState(){return {schema:7,activeTripId:null,settings:defaultSettings(),trips:[],cache:{places:{},cities:{},wikidata:{},wildlife:{},photos:{}}};}
 
 function sampleTrip(){
   const start='2027-04-10';
@@ -147,7 +148,14 @@ function normalizeLoadedState(candidate) {
     }
     state.cache.wildlife={};
   }
-  state.schema=6;
+  for(const trip of state.trips) {
+    trip.countries=Discovery.countriesForTrip(trip);
+    for(const wish of trip.wishlist||[]) {
+      wish.countryCode=wish.countryCode||wish.item?.countryCode||'';
+      wish.country=wish.country||wish.item?.country||'';
+    }
+  }
+  state.schema=7;
   return state;
 }
 
@@ -162,8 +170,9 @@ function ensureActive(){if(!activeTrip()&&state.trips.length)state.activeTripId=
 
 function cloneVersion(v,newName){const c=JSON.parse(JSON.stringify(v));c.id=uid('ver');c.name=newName||`${v.name} – Kopie`;c.createdAt=Date.now();const stopMap=new Map(),flightMap=new Map(),connectionMap=new Map();c.days.forEach(d=>{d.id=uid('day');d.stops.forEach(s=>{const old=s.id;s.id=uid('stop');stopMap.set(old,s.id)});});(c.flights||[]).forEach(f=>{const old=f.id;f.id=uid('flight');flightMap.set(old,f.id)});(c.connections||[]).forEach(x=>{const old=x.id;x.id=uid('conn');connectionMap.set(old,x.id)});c.transfers=(c.transfers||[]).map(x=>({...x,id:uid('transfer'),flightId:flightMap.get(x.flightId)||x.flightId,sourceRef:(x.sourceRef|| (x.flightId?`flight:${x.flightId}`:'' )).replace(/^flight:(.+)$/,(m,id)=>`flight:${flightMap.get(id)||id}`).replace(/^connection:(.+)$/,(m,id)=>`connection:${connectionMap.get(id)||id}`),toStopId:stopMap.get(x.toStopId)||x.toStopId}));return c}
 
-function showModal(html,onReady){const generation=++modalGeneration;$('#modalContent').innerHTML=html;$('#modal').classList.remove('hidden');if(onReady)setTimeout(()=>{if(generation===modalGeneration)onReady();},0);}
-function closeModal(){modalGeneration++;$('#modal').classList.add('hidden');$('#modalContent').innerHTML=''}
+let modalReturnFocus=null;
+function showModal(html,onReady){modalReturnFocus=document.activeElement;const generation=++modalGeneration;$('#modalContent').innerHTML=html;$('#modal').classList.remove('hidden');if(onReady)setTimeout(()=>{if(generation===modalGeneration){onReady();$('#modalContent input, #modalContent button')?.focus?.();}},0);}
+function closeModal(){modalGeneration++;$('#modal').classList.add('hidden');$('#modalContent').innerHTML='';modalReturnFocus?.focus?.();}
 
 // ------------------------- Free data providers -------------------------
 const OVERPASS_ENDPOINTS=[
@@ -190,15 +199,17 @@ function publicWildObservation(observation) {
   return Planner.hasLocation(point)&&!observation.captive&&!observation.captive_cultivated&&!observation.obscured&&!['obscured','private'].includes(observation.geoprivacy)&&!['obscured','private'].includes(observation.taxon_geoprivacy)&&(!observation.positional_accuracy||observation.positional_accuracy<=1000);
 }
 const Providers={
-  async geocode(q,limit=8) {
-    const key=`geo:v3:${normalizeName(q)}:${limit}`;if(state.cache.places[key])return state.cache.places[key];
+  async geocode(q,limit=8,options={}) {
+    const countryCodes=Discovery.validCountryCodes(options.countryCodes||[]).join(',');
+    const endpoint=Discovery.searchEndpoint(state.settings.geocodeEndpoint);
+    const key=`geo:v4:${endpoint}:${normalizeName(q)}:${limit}:${countryCodes}`;if(state.cache.places[key])return state.cache.places[key];
     const run=geocodeQueue.then(async()=>{
       if(state.cache.places[key])return state.cache.places[key];
       const delay=Math.max(0,nextGeocodeAt-Date.now());if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
       nextGeocodeAt=Date.now()+1100;
-      const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&accept-language=de,en&limit=${limit}&q=${encodeURIComponent(q)}`;
+      const url=`${endpoint}?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&accept-language=de,en&limit=${limit}&q=${encodeURIComponent(q)}${countryCodes?'&countrycodes='+countryCodes:''}`;
       const data=await apiJson(url);if(!Array.isArray(data))throw new Error('Ungültige Ortssuche.');
-      const result=data.map(x=>({name:x.namedetails?.name||x.display_name?.split(',')[0]||'',names:x.namedetails||{},display:x.display_name||'',lat:Planner.coordinate(x.lat,90),lng:Planner.coordinate(x.lon,180),type:x.type,category:x.category,addressType:x.addresstype,address:x.address||{},extratags:x.extratags||{},osmId:x.osm_id,osmType:x.osm_type,bbox:x.boundingbox?.map(Number),source:'Nominatim',retrievedAt:Date.now()})).filter(Planner.hasLocation);
+      const result=data.map(x=>({name:x.namedetails?.name||x.display_name?.split(',')[0]||'',names:x.namedetails||{},display:x.display_name||'',lat:Planner.coordinate(x.lat,90),lng:Planner.coordinate(x.lon,180),type:x.type,category:x.category,addressType:x.addresstype,address:x.address||{},extratags:x.extratags||{},osmId:x.osm_id,osmType:x.osm_type,bbox:x.boundingbox?.map(Number),countryCode:String(x.address?.country_code||'').toUpperCase(),country:x.address?.country||'',sourceId:`${x.osm_type}/${x.osm_id}`,wikiTag:x.extratags?.wikipedia||'',wikidata:x.extratags?.wikidata||'',source:'Nominatim',retrievedAt:Date.now()})).filter(Planner.hasLocation).filter(x=>!countryCodes||countryCodes.split(',').includes(x.countryCode.toLowerCase()));
       state.cache.places[key]=result;persistSoon();return result;
     });
     geocodeQueue=run.catch(()=>{});return run;
@@ -371,7 +382,7 @@ const Providers={
     const out=[...found.values()].sort((a,b)=>b.score-a.score).slice(0,4);if(anySuccess){state.cache.photos[k]=out;persistSoon()}return out;
   },
   async verifiedPhotosForItem(item,context='',kind='poi',detail=null){
-    if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return this.wildlifeTaxonPhotos(item,activeTrip()?.destination||context,month)}
+    if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return this.wildlifeTaxonPhotos(item,item.country||context||Discovery.countriesForTrip(activeTrip())[0]?.name||'',month)}
     const d=detail||await this.verifiedPlaceDetails(item,context,kind),out=[];const add=x=>{if(!x?.url||out.some(y=>y.url===x.url))return;out.push(x)};
     if((item.photoVerified||item.source==='Wikipedia')&&item.photo)add({url:item.photo,full:item.photo,title:item.name,page:item.wiki||'',verified:true});
     for(const x of await this.wikiImageUrls(d))add(x);
@@ -401,6 +412,102 @@ const Providers={
   async flightRoute(number){const clean=String(number||'').replace(/\s+/g,'').toUpperCase();if(!clean)throw new Error('Flugnummer fehlt.');const u=`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(clean)}`;const j=await apiJson(u);return j.response?.flightroute||j.response||null;}
 };
 
+// ------------------------- Search and international trips -------------------------
+let discoveryCountryCode='',discoverySearch={query:'',kind:'all',scope:'trip',items:[],error:'',searched:false,busy:false},searchGeneration=0;
+let discoveryFilter='all';
+function discoveryCountry(){const c=Discovery.countriesForTrip(activeTrip());return c.find(x=>(x.code||x.name)===discoveryCountryCode)||c[0]||null;}
+function resetDiscoverySearch(){searchGeneration++;discoveryCountryCode='';discoverySearch={query:'',kind:'all',scope:'trip',items:[],error:'',searched:false,busy:false};if($('#poiQuery'))$('#poiQuery').value='';}
+function countryLabel(trip=activeTrip()){return Discovery.countriesForTrip(trip).map(c=>c.name).join(' · ');}
+function renderDiscoveryControls(){
+  const trip=activeTrip(),countries=Discovery.countriesForTrip(trip),chosen=discoveryCountry();
+  const picker=$('#discoverCountry');if(picker){picker.innerHTML=countries.map(c=>`<option value="${esc(c.code||c.name)}" ${(c.code||c.name)===(chosen?.code||chosen?.name)?'selected':''}>${esc(c.name)}</option>`).join('')||'<option>Länder hinzufügen</option>';}
+  const scope=$('#poiScope');if(scope){scope.innerHTML='<option value="trip">Alle Reiseländer</option>'+countries.filter(c=>c.code).map(c=>`<option value="${c.code}">${esc(c.name)}</option>`).join('')+'<option value="world">Weltweit</option>';if([...scope.options||[]].some(x=>x.value===discoverySearch.scope))scope.value=discoverySearch.scope;}
+  $('#discoverTripCountries').textContent=countryLabel()||'Lege zuerst eine Reise an.';
+  $('#discoverSelectionCount').textContent=`${trip?.wishlist?.length||0} Wünsche`;
+  const submit=$('#poiSearchBtn');if(submit)submit.disabled=!trip||discoverySearch.busy;
+  const custom=$('#customPoiBtn');if(custom)custom.disabled=!trip;
+  for(const node of $$('[data-discover-panel]'))node.hidden=discoveryFilter!=='all'&&node.dataset.discoverPanel!==discoveryFilter;
+  for(const button of $$('[data-discover-filter]')){const selected=button.dataset.discoverFilter===discoveryFilter;button.classList.toggle('on',selected);button.setAttribute('aria-pressed',String(selected));}
+}
+Providers.searchTaxa=async function(query){
+  const key=`taxa:v1:${normalizeName(query)}`,cached=state.cache.wildlife[key];if(cached)return cached;
+  const data=await apiJson(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(query)}&taxon_id=1&is_active=true&per_page=20&locale=de`);
+  const animals=new Set(['Mammalia','Aves','Reptilia','Amphibia','Actinopterygii','Insecta','Arachnida','Mollusca','Animalia']);
+  const result=(data.results||[]).filter(t=>t.id&&t.is_active!==false&&(animals.has(t.iconic_taxon_name)||(t.ancestor_ids||[]).includes(1))).map(t=>({kind:'wildlife',taxonId:t.id,name:t.preferred_common_name||t.name,scientific:t.name,rank:t.rank,lat:null,lng:null,photo:t.default_photo?.medium_url||t.default_photo?.square_url||'',photoAttribution:t.default_photo?.attribution||'',photoLicense:t.default_photo?.license_code||'',source:'iNaturalist',sourceUrl:`https://www.inaturalist.org/taxa/${t.id}`,retrievedAt:Date.now()}));
+  state.cache.wildlife[key]=result;persistSoon();return result;
+};
+async function searchPoints(query,{kind='all',scope='trip',trip=activeTrip()}={}){
+  const q=String(query||'').trim();if(q.length<2)throw new Error('Bitte mindestens zwei Zeichen eingeben.');
+  const countries=Discovery.countriesForTrip(trip),countryCodes=scope==='world'?[]:scope==='trip'?countries.map(c=>c.code).filter(Boolean):[scope];
+  const jobs=[];
+  if(kind!=='wildlife')jobs.push(Providers.geocode(q,16,{countryCodes}).then(items=>items.map(x=>({...x,kind:Discovery.pointKind(x),photo:'',sourceUrl:x.osmId?`https://www.openstreetmap.org/${x.osmType}/${x.osmId}`:''})).filter(x=>kind!=='city'||x.kind==='city').filter(x=>kind!=='highlight'||x.kind==='highlight')));
+  if(kind==='all'||kind==='wildlife')jobs.push(Providers.searchTaxa(q).then(items=>items.map(x=>({...x,countryCode:scope==='world'||scope==='trip'?'':scope,country:Discovery.country(scope)?.name||''}))));
+  const results=await Promise.allSettled(jobs),items=Discovery.dedupeResults(results.filter(x=>x.status==='fulfilled').flatMap(x=>x.value));
+  const errors=results.filter(x=>x.status==='rejected').map(x=>x.reason.message);
+  return {items,errors};
+}
+async function submitPoiSearch(){
+  const trip=activeTrip();if(!trip){newTripModal();return;}
+  const query=$('#poiQuery').value.trim(),kind=$('#poiKind').value,scope=$('#poiScope').value;
+  if(query.length<2){toast('Bitte mindestens zwei Zeichen eingeben.');return;}
+  const generation=++searchGeneration;discoverySearch={query,kind,scope,items:[],error:'',searched:true,busy:true};renderSearchResults();
+  try{const {items,errors}=await searchPoints(query,{kind,scope,trip});if(generation!==searchGeneration||activeTrip()?.id!==trip.id)return;discoverySearch.items=items;discoverySearch.error=errors.length?'Ein Teil der Suche war nicht erreichbar. '+errors.join(' '):'';}
+  catch(error){if(generation===searchGeneration)discoverySearch.error=error.message;}
+  finally{if(generation===searchGeneration){discoverySearch.busy=false;renderSearchResults();}}
+}
+function poiImage(item,kind,cls='poi-photo'){
+  const photo=Discovery.safeUrl(item.photo);return photo?`<img class="${cls}" src="${esc(photo)}" alt="${esc(item.name)}" loading="lazy" decoding="async">`:`<div class="${cls} photo-placeholder" aria-label="Kein Foto"><span>${wishlistIcon(kind)}</span></div>`;
+}
+function renderSearchResults(){
+  const box=$('#poiSearchResults');if(!box)return;box.hidden=!discoverySearch.searched;
+  $('#poiSearchBtn').disabled=discoverySearch.busy||!activeTrip();$('#poiSearchBtn').textContent=discoverySearch.busy?'Sucht …':'Suchen';
+  if(!discoverySearch.searched){box.innerHTML='';return;}
+  if(discoverySearch.busy){box.innerHTML='<p role="status">Orte und Tierarten werden gesucht …</p>';return;}
+  const {items,error}=discoverySearch;
+  box.innerHTML=`<div class="sectiontitle"><h2>${items.length} Treffer</h2><button data-clear-search aria-label="Suchergebnisse schließen">×</button></div>${error?`<p class="warnline">${esc(error)}</p>`:''}${items.length?`<div class="search-result-list">${items.map((x,i)=>{
+    const selected=getWishlistEntry(x.kind,x);return `<article class="search-result">${poiImage(x,x.kind,'result-photo')}<div class="result-info"><h3>${esc(x.name)}</h3><p>${esc(x.kind==='wildlife'?x.scientific||'Tierart':x.display||x.country)}</p><small>${esc(x.kind==='wildlife'?'Tierwunsch · Beobachtungsort folgt':wishlistKindLabel(x.kind))}</small></div><button data-search-select="${i}" aria-label="${esc(x.name)} ${selected?'aus Wunschliste entfernen':'zur Wunschliste hinzufügen'}" class="wishcheck ${selected?'on':''}">${selected?'✓':'+'}</button><button data-search-detail="${i}" class="textbtn result-details">Details</button></article>`;}).join('')}</div>`:'<div class="empty"><b>Dein Ziel ist nicht dabei?</b><p>Probiere den Ortsnamen mit Stadt oder Region. Tierarten findest du auch über ihren wissenschaftlichen Namen.</p></div>'}<button data-custom-search class="full-width">+ Eigenen Ort oder Tierwunsch anlegen</button><p class="tiny">Orte: © OpenStreetMap-Mitwirkende. Tierarten: iNaturalist. Ein Artentreffer belegt kein Vorkommen im Reiseland.</p>`;
+}
+function customWishModal(prefill={}){
+  if(!activeTrip()){newTripModal();return;}
+  const countries=Discovery.countriesForTrip(activeTrip()),code=prefill.countryCode||discoveryCountry()?.code||'';
+  showModal(`<h2>${prefill.customId?'Eigenen Wunsch bearbeiten':'Dein eigener Wunsch'}</h2><p class="lead">Lieblingsort, kleiner Aussichtspunkt oder Tierart: Deine Auswahl ist nicht auf Vorschläge begrenzt.</p><div class="formgrid"><label class="span2">Name<input id="mCustomName" value="${esc(prefill.name||discoverySearch.query||'')}" placeholder="z. B. Aussichtspunkt am See"></label><label>Kategorie<select id="mCustomKind">${[['highlight','Natur & Sehenswürdigkeit'],['city','Stadt oder Ort'],['wildlife','Tier / Wildlife-Ort']].map(([k,l])=>`<option value="${k}" ${k===prefill.kind?'selected':''}>${l}</option>`).join('')}</select></label><label>Land<select id="mCustomCountry"><option value="">Noch offen</option>${Discovery.countries.map(c=>`<option value="${c.code}" ${c.code===code?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label><label>Priorität<select id="mCustomPriority">${wishlistPriorityOptions(prefill.priority||'high')}</select></label><label>Aufenthalt (Minuten)<input id="mCustomDuration" type="number" min="15" max="720" value="${prefill.durationMin||90}"></label></div><details class="form-details" ${Planner.hasLocation(prefill)?'open':''}><summary>Standort und Notizen ergänzen</summary><p class="tiny">Koordinaten kannst du später ergänzen. Ohne Standort bleibt der Wunsch gespeichert, bis er eingeplant werden kann.</p><div class="formgrid"><label>Breitengrad<input id="mCustomLat" inputmode="decimal" value="${prefill.lat??''}" placeholder="z. B. 51.0504"></label><label>Längengrad<input id="mCustomLng" inputmode="decimal" value="${prefill.lng??''}" placeholder="z. B. 13.7373"></label><label class="span2">Notizen<textarea id="mCustomNotes">${esc(prefill.notes||'')}</textarea></label></div></details><p id="customError" class="form-error" role="alert"></p><div class="actions"><button data-close-modal>Abbrechen</button><button id="saveCustomWish" class="primary">In Wunschliste speichern</button></div>`,()=>{
+    $('#saveCustomWish').onclick=()=>{try{
+      const item=Discovery.customPoint({customId:prefill.customId,name:$('#mCustomName').value,kind:$('#mCustomKind').value,countryCode:$('#mCustomCountry').value,lat:$('#mCustomLat').value.replace(',','.'),lng:$('#mCustomLng').value.replace(',','.'),durationMin:$('#mCustomDuration').value,notes:$('#mCustomNotes').value},()=>uid('custom'));
+      const priority=$('#mCustomPriority').value,trip=activeTrip(),oldIndex=trip.wishlist?.findIndex(x=>x.key===prefill.key)??-1;if(prefill.key)trip.wishlist=trip.wishlist.filter(x=>x.key!==prefill.key);
+      addCountryForItem(item);setWishlistSelection(item.kind,item,true,priority);const wish=getWishlistEntry(item.kind,item);wish.durationMin=item.durationMin;wish.priority=priority;wish.stayDays=prefill.stayDays||1;wish.photography=prefill.photography?JSON.parse(JSON.stringify(prefill.photography)):null;if(oldIndex>=0){trip.wishlist.splice(trip.wishlist.indexOf(wish),1);trip.wishlist.splice(oldIndex,0,wish);}persistSoon();closeModal();renderAll();switchView('wishlist');toast('In deiner Wunschliste gespeichert.');
+    }catch(error){$('#customError').textContent=error.message;}};
+  });
+}
+function addCountryForItem(item){const trip=activeTrip(),c=Discovery.country(item.countryCode);if(!trip||!c)return;trip.countries=Discovery.countriesForTrip(trip);if(!trip.countries.some(x=>x.code===c.code))trip.countries.push(c);trip.destination=trip.countries.map(x=>x.name).join(' · ');trip.country=trip.countries[0]?.name||'';}
+function bindCountryEditor(countries){
+  const render=()=>{$('#countryEditorChips').innerHTML=countries.map((c,i)=>`<button class="chip on" data-remove-country="${i}" aria-label="${esc(c.name)} entfernen">${esc(c.name)} ×</button>`).join('')||'<p class="tiny">Wähle ein oder mehrere Länder.</p>';$$('[data-remove-country]').forEach(b=>b.onclick=()=>{countries.splice(+b.dataset.removeCountry,1);render();});};
+  $('#addCountryBtn').onclick=()=>{const value=$('#countryEntry').value,c=Discovery.country(value);if(!c){$('#countryError').textContent='Bitte ein Land aus der Liste wählen.';return;}if(!countries.some(x=>x.code===c.code))countries.push(c);$('#countryEntry').value='';$('#countryError').textContent='';render();};
+  $('#countryEntry').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('#addCountryBtn').click();}};render();
+}
+function countryEditorHtml(){return `<div class="country-editor"><label for="countryEntry">Reiseländer</label><div class="searchbar"><input id="countryEntry" list="countryNames" placeholder="z. B. Deutschland, dann hinzufügen" autocomplete="off"><button id="addCountryBtn">Hinzufügen</button></div><datalist id="countryNames">${Discovery.countries.map(c=>`<option value="${esc(c.name)}">${c.code}</option>`).join('')}</datalist><div id="countryEditorChips" class="chips"></div><p id="countryError" class="form-error" role="alert"></p></div>`;}
+function editTripCountries(trip=activeTrip()){if(!trip){newTripModal();return;}const countries=Discovery.countriesForTrip(trip);showModal(`<h2>Wohin geht deine Reise?</h2><p class="lead">Suche und Wunschliste verbinden alle Reiseländer. Die Reihenfolge der Route legst du später fest.</p>${countryEditorHtml()}<div class="actions"><button data-close-modal>Abbrechen</button><button id="saveTripCountries" class="primary">Länder übernehmen</button></div>`,()=>{bindCountryEditor(countries);$('#saveTripCountries').onclick=()=>{const typed=$('#countryEntry').value.trim();if(typed){const c=Discovery.country(typed);if(!c){$('#countryError').textContent='Bitte das eingegebene Land aus der Liste wählen.';return;}if(!countries.some(x=>x.code===c.code))countries.push(c);}if(!countries.length){$('#countryError').textContent='Mindestens ein Reiseland wählen.';return;}trip.countries=countries;trip.country=countries[0].name;trip.destination=countries.map(c=>c.name).join(' · ');resetDiscoverySearch();persistSoon();closeModal();renderAll();toast('Reiseländer gespeichert.');};});}
+function bindDiscoveryEvents(){
+  $('#toggleAllDays').onclick=()=>{const v=activeVersion();if(!v)return;const collapse=!v.days.every(d=>d.collapsed);v.days.forEach(d=>d.collapsed=collapse);persistSoon();renderPlanner();};
+  $('#poiSearchForm').onsubmit=e=>{e.preventDefault();submitPoiSearch();};
+  $('#customPoiBtn').onclick=()=>customWishModal();$('#wishAddCustom').onclick=()=>customWishModal();
+  $('#discoverCountry').onchange=e=>{discoveryCountryCode=e.target.value;discoverVisible.cities=discoverVisible.attractions=discoverVisible.wildlife=5;renderDiscover();};
+  $('#editCountriesBtn').onclick=()=>editTripCountries();$('#settingsNavBtn').onclick=()=>switchView('settings');
+  $('#compareVersionsBtn').onclick=()=>switchView('compare');$('#manageVersionsBtn').onclick=()=>{const trip=activeTrip();if(trip)versionModal(trip);};
+  document.addEventListener('click',event=>{const button=event.target.closest('button'),d=button?.dataset||{};
+    if(d.goto) {switchView(d.goto);if(d.goto==='discover')$('#poiQuery')?.focus?.();}
+    if(d.discoverFilter){discoveryFilter=d.discoverFilter;renderDiscoveryControls();}
+    if(d.focusSearch!==undefined){switchView('discover');$('#poiQuery')?.focus?.();}
+    if(d.clearSearch!==undefined){searchGeneration++;discoverySearch.searched=false;discoverySearch.busy=false;renderSearchResults();}
+    if(d.customSearch!==undefined)customWishModal();
+    if(d.searchSelect!==undefined){const item=discoverySearch.items[+d.searchSelect];if(item){const existing=getWishlistEntry(item.kind,item);if(!existing)addCountryForItem(item);setWishlistSelection(item.kind,item,!existing,existing?.priority||'high');toast(existing?'Aus Wunschliste entfernt.':'Zur Wunschliste hinzugefügt.');}}
+    if(d.searchDetail!==undefined){const item=discoverySearch.items[+d.searchDetail];if(item)openSuggestionDetail(item.kind==='highlight'?'poi':item.kind,item,item.country||discoveryCountry()?.name||'');}
+    if(d.wishMove){const trip=activeTrip(),i=trip?.wishlist?.findIndex(x=>x.key===d.wishMove),j=i+Number(d.direction);if(i>=0&&j>=0&&j<trip.wishlist.length){[trip.wishlist[i],trip.wishlist[j]]=[trip.wishlist[j],trip.wishlist[i]];persistSoon();renderWishlistSummary();}}
+    if(d.editCustom){const wish=activeTrip()?.wishlist?.find(x=>x.key===d.editCustom);if(wish)customWishModal({...wish.item,...wish});}
+    if(d.wishView){const wish=activeTrip()?.wishlist?.find(x=>x.key===d.wishView);if(wish)openSuggestionDetail(wish.kind==='highlight'?'poi':wish.kind,wish.item,wish.country);}
+  });
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.key==='Tab'&&!$('#modal').classList.contains('hidden')){const focusable=[...$('#modalContent').querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],summary')].filter(x=>x.getClientRects().length);if(focusable.length){const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){last.focus();e.preventDefault();}else if(!e.shiftKey&&document.activeElement===last){first.focus();e.preventDefault();}}}});
+}
+
 // ------------------------- Rendering -------------------------
 function renderAll(){
   ensureActive(); renderContext(); renderTrips(); renderDiscover(); renderPlanner(); renderCompare(); renderSettings(); if(currentView==='map') renderMap();
@@ -420,19 +527,20 @@ function versionMetrics(v){
 }
 function renderTrips(){
   const box=$('#tripCards');box.innerHTML='';
-  if(!state.trips.length){box.innerHTML='<div class="card"><b>Noch keine Reise.</b><p>Lege deine erste Reise an.</p></div>';return;}
-  for(const t of state.trips){const v=t.versions.find(x=>x.id===t.selectedVersionId)||t.versions[0],m=versionMetrics(v);const el=document.createElement('div');el.className=`tripcard ${t.id===state.activeTripId?'active':''}`;el.innerHTML=`
-    <div class="triptitle"><div><h3>${esc(t.title)}</h3><div class="tripmeta">${esc(t.destination||'Kein Ziel')} · ${t.versions.length} Version${t.versions.length===1?'':'en'}</div></div><button data-trip-menu="${t.id}">•••</button></div>
-    <div class="tripstats"><div class="metric"><b>${m.days}</b><small>Tage</small></div><div class="metric"><b>${m.stops}</b><small>Stopps</small></div><div class="metric"><b>${Math.round(m.km)}</b><small>km geplant</small></div></div>
-    <div class="actions" style="margin-top:10px"><button data-open-trip="${t.id}">Öffnen</button><button data-new-version="${t.id}">Version duplizieren</button></div>`;box.appendChild(el);}
+  if(!state.trips.length){box.innerHTML='<div class="empty wish-empty"><h2>Wohin zieht es dich?</h2><p>Lege deine erste Reise an. Ein Land oder mehrere – alles passt in einen Plan.</p></div>';return;}
+  for(const trip of state.trips){const v=trip.versions.find(x=>x.id===trip.selectedVersionId)||trip.versions[0],metrics=versionMetrics(v),photo=(trip.wishlist||[]).find(x=>Discovery.safeUrl(x.item?.photo))?.item?.photo;const el=document.createElement('article');el.className=`tripcard ${trip.id===state.activeTripId?'active':''}`;
+    el.innerHTML=`${photo?`<img class="trip-cover" src="${esc(photo)}" alt="Reiseziel aus deiner Wunschliste" loading="lazy">`:''}<div class="triptitle"><div><span class="trip-kicker">${trip.id===state.activeTripId?'Aktuelle Reise':'Deine Reise'}</span><h2>${esc(trip.title)}</h2><div class="tripmeta">${esc(countryLabel(trip))}</div></div><button data-trip-menu="${trip.id}" aria-label="${esc(trip.title)} bearbeiten">•••</button></div><p class="trip-dates">${fmtShortDate(v?.startDate)} – ${fmtShortDate(v?.endDate)}</p><div class="tripstats"><div class="metric"><b>${metrics.days}</b><small>Tage</small></div><div class="metric"><b>${trip.wishlist?.length||0}</b><small>Wünsche</small></div><div class="metric"><b>${trip.versions.length}</b><small>Varianten</small></div></div><div class="actions trip-actions"><button class="primary" data-open-trip="${trip.id}">Reiseplan öffnen →</button><button data-new-version="${trip.id}">Variante erstellen</button></div>`;box.appendChild(el);
+  }
 }
 function renderDiscover(){
-  const t=activeTrip(),v=activeVersion();$('#discoverDestination').textContent=t?.destination||'Kein Reiseziel';$('#discoverDates').textContent=v?`${fmtDate(v.startDate)} – ${fmtDate(v.endDate)}`:'Noch keine Version';
+  const t=activeTrip(),v=activeVersion();renderDiscoveryControls();$('#discoverDestination').textContent=discoveryCountry()?.name||'Reiseländer wählen';$('#discoverDates').textContent=v?`${fmtDate(v.startDate)} – ${fmtDate(v.endDate)}`:'Noch keine Version';
   const chips=$('#interestChips');chips.innerHTML='';INTERESTS.forEach(i=>{const b=document.createElement('button');b.className=`chip ${(t?.interests||[]).includes(i)?'on':''}`;b.textContent=i;b.onclick=()=>{if(!t)return;const a=t.interests||[];const p=a.indexOf(i);p>=0?a.splice(p,1):a.push(i);persistSoon();renderDiscover();};chips.appendChild(b)});
   renderSuggestionBoxes();renderWishlistSummary();
 }
 function wishlistKey(kind,item) {
-  if(kind==='wildlife')return `wildlife:${item.taxonId||normalizeName(item.name)}`;
+  if(kind==='wildlife'&&!item.isWildlifeLocation&&!item.customId)return `wildlife:${item.taxonId||normalizeName(item.name)}`;
+  if(item.customId)return `${kind}:custom:${item.customId}`;
+  if(kind==='wildlife'&&item.isWildlifeLocation)return `wildlife-location:${item.taxonId||normalizeName(item.name)}:${Number(item.lat).toFixed(4)}:${Number(item.lng).toFixed(4)}`;
   const entity=item.wikidata||item.tags?.wikidata||item.wiki||item.wikiTag;
   return `${kind}:${entity||normalizeName(item.name)+(Planner.hasLocation(item)?`:${Number(item.lat).toFixed(4)}:${Number(item.lng).toFixed(4)}`:'')}`;
 }
@@ -448,28 +556,39 @@ function setWishlistSelection(kind,item,selected=true,priority='high') {
   if(!selected){if(idx>=0)t.wishlist.splice(idx,1);}
   else {
     const clean={...item};delete clean.kind;
-    const entry={key,kind,priority:priority||'high',name:item.name||item.title||'Unbenannt',lat:Planner.coordinate(item.lat,90),lng:Planner.coordinate(item.lng,180),item:clean,selectedAt:Date.now(),stayDays:existing?.stayDays||1,durationMin:existing?.durationMin||Planner.duration({kind})};
+    const entry={key,kind,countryCode:item.countryCode||'',country:item.country||'',priority:priority||'high',name:item.name||item.title||'Unbenannt',lat:Planner.coordinate(item.lat,90),lng:Planner.coordinate(item.lng,180),item:clean,selectedAt:Date.now(),stayDays:existing?.stayDays||1,durationMin:existing?.durationMin||Planner.duration({kind})};
     if(idx>=0)t.wishlist[idx]={...existing,...entry,priority:existing.priority||priority};else t.wishlist.push(entry);
   }
-  persistSoon();renderDiscover();
+  persistSoon();renderDiscover();renderSearchResults();
 }
 function updateWishlistPriority(key,priority){const t=activeTrip(),x=t?.wishlist?.find(e=>e.key===key);if(!x||!WISH_PRIORITIES[priority])return;x.priority=priority;persistSoon();renderWishlistSummary();renderSuggestionBoxes();}
 function wishlistPriorityOptions(value){return Object.entries(WISH_PRIORITIES).map(([k,v])=>`<option value="${k}" ${value===k?'selected':''}>${v.label}</option>`).join('');}
 function wishlistControlHtml(kind,item){const x=getWishlistEntry(kind,item),key=wishlistKey(kind,item);return `<div class="wishcontrol ${x?'selected':''}"><button class="wishcheck ${x?'on':''}" data-wish-toggle="${esc(kind)}" data-wish-item='${esc(JSON.stringify(item))}' title="${x?'Aus Auswahl entfernen':'Für Route auswählen'}">${x?'✓':'＋'}</button>${x?`<select data-wish-priority="${esc(key)}">${wishlistPriorityOptions(x.priority)}</select>`:''}</div>`;}
 function renderWishlistSummary() {
-  const t=activeTrip(),list=[...(t?.wishlist||[])].sort((a,b)=>(WISH_PRIORITIES[b.priority]?.weight||0)-(WISH_PRIORITIES[a.priority]?.weight||0));
-  const box=$('#wishlistSummary'),count=$('#wishlistCount'),btn=$('#autoRouteBtn');if(!box||!count)return;
-  count.textContent=`${list.length} ausgewählt`;if(btn)btn.disabled=!list.length;
-  box.className='wishlistsummary'+(!list.length?' empty':'');
-  box.innerHTML=list.length?list.map(x=>`<div class="wishrow"><div><b>${wishlistIcon(x.kind)} ${esc(x.name)}</b><div class="tiny">${esc(WISH_PRIORITIES[x.priority]?.label||x.priority)} · ${x.stayDays||1} Aufenthaltstag(e) · je ${durText(x.durationMin||Planner.duration(x))}</div></div><div class="actions"><button data-wish-config="${esc(x.key)}">Anpassen</button><button data-wish-remove="${esc(x.key)}" aria-label="${esc(x.name)} aus Auswahl entfernen">×</button></div></div>`).join(''):'Noch nichts ausgewählt.';
+  const trip=activeTrip(),list=trip?.wishlist||[],version=activeVersion(),included=new Set(version?.routeMeta?.includedKeys||[]),deferred=new Map((version?.routeMeta?.deferred||[]).map(x=>[x.key,x.reason]));
+  const box=$('#wishlistSummary');if(!box)return;
+  $('#wishlistCount').textContent=`${list.length} Wünsche · ${list.filter(x=>x.priority==='must').length} Muss-Ziele`;
+  $('#discoverSelectionCount').textContent=`${list.length} Wünsche`;$('#autoRouteBtn').disabled=!list.length;
+  box.innerHTML=list.length?list.map((wish,i)=>{
+    const status=included.has(wish.key)?'✓ In dieser Variante eingeplant':deferred.has(wish.key)?'⚠ '+deferred.get(wish.key):!Planner.hasLocation(wish)&&wish.kind!=='wildlife'?'⚠ Standort ergänzen':'Für die nächste Route vorgemerkt';
+    return `<article class="wish-item">${poiImage(wish.item||{},wish.kind,'wish-photo')}<div class="wish-info"><button class="wish-title textbtn" data-wish-view="${esc(wish.key)}">${esc(wish.name)}</button><p>${esc(wish.country||'Alle Reiseländer')} · ${durText(wish.durationMin||Planner.duration(wish))}${(wish.stayDays||1)>1?` × ${wish.stayDays} Tage`:''}</p><span class="priority ${esc(wish.priority)}">${esc(WISH_PRIORITIES[wish.priority]?.label||'Mittel')}</span>${photographyHtml(wish.photography)}<p class="wish-status">${esc(status)}</p></div><div class="wish-item-actions"><button data-wish-config="${esc(wish.key)}">Priorität, Zeit & Foto</button>${wish.item?.customId?`<button data-edit-custom="${esc(wish.key)}">Ort bearbeiten</button>`:''}<button data-wish-move="${esc(wish.key)}" data-direction="-1" aria-label="${esc(wish.name)} nach oben" ${i===0?'disabled':''}>↑</button><button data-wish-move="${esc(wish.key)}" data-direction="1" aria-label="${esc(wish.name)} nach unten" ${i===list.length-1?'disabled':''}>↓</button><button data-wish-remove="${esc(wish.key)}" aria-label="${esc(wish.name)} entfernen">×</button></div></article>`;
+  }).join(''):'<div class="empty wish-empty"><span aria-hidden="true">♡</span><h2>Platz für deine Reisewünsche</h2><p>Wähle Städte, Naturziele und Tiere. Lege fest, was du unbedingt erleben möchtest.</p><button class="primary" data-goto="discover">Wünsche entdecken</button></div>';
+}
+function photographyHtml(photo){
+  if(!photo||(!photo.genres?.length&&!photo.windowStart&&!photo.notes))return'';
+  return `<div class="photo-plan"><b>Fotografie</b> ${esc((photo.genres||[]).map(g=>Discovery.photoGenres[g]).filter(Boolean).join(' · '))}${photo.windowStart?`<br>Aufnahmefenster ${esc(photo.windowStart)}–${esc(photo.windowEnd)} · selbst festgelegt`:''}${photo.notes?`<details><summary>Aufnahmehinweise</summary><p>${esc(photo.notes)}</p></details>`:''}</div>`;
 }
 function wishSettingsModal(key) {
-  const t=activeTrip(),wish=t?.wishlist?.find(x=>x.key===key);if(!wish)return;
-  showModal(`<h2>${esc(wish.name)}</h2><p class="lead">Priorität und gewünschte Zeit für den nächsten Routenvorschlag.</p><div class="formgrid"><label>Priorität<select id="mWishPriority">${wishlistPriorityOptions(wish.priority)}</select></label><label>Aufenthaltstage<input id="mWishDays" type="number" min="1" max="30" value="${wish.stayDays||1}"></label><label>Minuten je Aufenthaltstag<input id="mWishDuration" type="number" min="15" max="720" step="15" value="${wish.durationMin||Planner.duration(wish)}"></label></div><p class="tiny">Fahrtzeit und Übernachtung werden zusätzlich eingeplant. Wildlife-Orte werden anhand der Taxon-ID und des Reisemonats gesucht.</p><div class="actions"><button data-close-modal>Abbrechen</button><button id="saveWishBtn" class="primary">Übernehmen</button></div>`,()=>{
+  const t=activeTrip(),wish=t?.wishlist?.find(x=>x.key===key);if(!wish)return;const photo=wish.photography||{};
+  showModal(`<h2>${esc(wish.name)}</h2><p class="lead">Was ist dir wichtig, und wie viel Zeit möchtest du einplanen?</p><div class="formgrid"><label>Priorität<select id="mWishPriority">${wishlistPriorityOptions(wish.priority)}</select></label><label>Aufenthaltstage<input id="mWishDays" type="number" min="1" max="30" value="${wish.stayDays||1}"></label><label>Minuten je Aufenthaltstag<input id="mWishDuration" type="number" min="15" max="720" step="15" value="${wish.durationMin||Planner.duration(wish)}"></label></div><details class="form-details" ${photo.genres?.length||photo.windowStart||photo.notes?'open':''}><summary>Fotografie planen</summary><p>Welche Motive möchtest du aufnehmen?</p><div class="photo-genres">${Object.entries(Discovery.photoGenres).map(([k,label])=>`<label class="checkline"><input type="checkbox" data-photo-genre="${k}" ${(photo.genres||[]).includes(k)?'checked':''}>${label}</label>`).join('')}</div><div class="formgrid"><label>Aufnahmefenster ab<input id="mPhotoStart" type="time" value="${esc(photo.windowStart||'')}"></label><label>Aufnahmefenster bis<input id="mPhotoEnd" type="time" value="${esc(photo.windowEnd||'')}"></label><label class="span2">Motiv, Perspektive und Ausrüstung<textarea id="mPhotoNotes" placeholder="z. B. Spiegelung am See, Blick nach Osten, Stativ">${esc(photo.notes||'')}</textarea></label></div><p class="tiny">Optional: Trage ein geprüftes Zeitfenster in Ortszeit ein. Die gesamte Aufenthaltsdauer muss hineinpassen. Sonnenstand und Wetter werden noch nicht berechnet. Für Nachtaufnahmen über Mitternacht zwei Wünsche anlegen.</p></details><p id="wishError" class="form-error" role="alert"></p><div class="actions"><button data-close-modal>Abbrechen</button><button id="saveWishBtn" class="primary">Übernehmen</button></div>`,()=>{
     $('#saveWishBtn').onclick=()=>{
       const days=Number($('#mWishDays').value),duration=Number($('#mWishDuration').value);
-      if(!Number.isInteger(days)||days<1||days>30||!Number.isFinite(duration)||duration<15||duration>720){toast('Gültige Aufenthaltsdauer wählen.');return;}
-      Object.assign(wish,{priority:$('#mWishPriority').value,stayDays:days,durationMin:duration});persistSoon();closeModal();renderDiscover();
+      if(!Number.isInteger(days)||days<1||days>30||!Number.isFinite(duration)||duration<15||duration>720){$('#wishError').textContent='Gültige Aufenthaltsdauer wählen.';return;}
+      try{
+        const photography=Discovery.photoPlan({genres:$$('[data-photo-genre]:checked').map(x=>x.dataset.photoGenre),windowStart:$('#mPhotoStart').value,windowEnd:$('#mPhotoEnd').value,notes:$('#mPhotoNotes').value});
+        if(photography.windowStart&&duration>Planner.minutes(photography.windowEnd)-Planner.minutes(photography.windowStart))throw new Error('Die Aufenthaltsdauer ist länger als das Aufnahmefenster.');
+        Object.assign(wish,{priority:$('#mWishPriority').value,stayDays:days,durationMin:duration,photography});persistSoon();closeModal();renderDiscover();
+      }catch(error){$('#wishError').textContent=error.message;}
     };
   });
 }
@@ -478,27 +597,31 @@ function suggestionFooter(kind,total,shown){
   const more=shown<total;
   return `<div class="suggestionfooter"><span>${Math.min(shown,total)} von ${total}</span><div>${shown>5?`<button data-suggestions-less="${kind}">Weniger</button>`:''}${more?`<button class="primary mini" data-suggestions-more="${kind}">Weitere laden</button>`:''}</div></div>`;
 }
-function renderCitySuggestions(cities){
-  const p=$('#citySuggestions'),limit=discoverVisible.cities;if(cities?.length){const shown=cities.slice(0,limit);p.className=`suggestions ${limit>5?'scrollsuggestions expanded':''}`;p.innerHTML=shown.map((x,i)=>`<div class="suggestion citysuggestion ${getWishlistEntry('city',x)?'wishselected':''}">${x.photo?`<img class="thumb" src="${esc(x.photo)}" alt="">`:`<div class="thumb ${x.photoChecked?'citythumbfallback':'imageloading'}">${x.photoChecked?'🏙':'Bild lädt …'}</div>`}<div><h4>${getWishlistEntry('city',x)?'✓ ':''}${esc(x.name)}</h4><p>${x.population?`${Number(x.population).toLocaleString('de-DE')} Einwohner · `:''}${x.summary?esc(x.summary.slice(0,72))+(x.summary.length>72?'…':''):`Stadt-Vorschlag ${i+1}`}</p></div><div class="suggestionactions"><button data-city-overview='${esc(JSON.stringify(x))}'>Entdecken</button>${wishlistControlHtml('city',x)}</div></div>`).join('')+suggestionFooter('cities',cities.length,shown.length);setTimeout(()=>enrichCitySuggestionThumbs(shown),0);}else{p.className='suggestions empty';p.textContent='Noch nicht geladen.'}
+function inspirationCard(item,kind){
+  const selected=getWishlistEntry(kind,item),meta=kind==='wildlife'?`${item.count??'–'} historische Beobachtungen`:item.highlightType||item.country||wishlistKindLabel(kind);
+  const attr=kind==='city'?'data-city-overview':kind==='wildlife'?'data-wild-detail':'data-poi-detail';
+  return `<article class="inspiration-card ${selected?'is-selected':''}"><button class="image-button" ${attr}='${esc(JSON.stringify(item))}' aria-label="Details zu ${esc(item.name)}">${poiImage(item,kind)}</button><div class="inspiration-body"><small>${esc(meta)}</small><h3>${esc(item.name)}</h3><p>${esc(kind==='wildlife'?item.scientific||'Sichtung nicht garantiert':item.summary?.slice(0,95)||'Öffne Details und entdecke den Ort.')}</p><div class="inspiration-actions"><button class="textbtn" ${attr}='${esc(JSON.stringify(item))}'>Details →</button>${wishlistControlHtml(kind,item)}</div></div></article>`;
 }
+function renderInspiration(kind,data,selector){
+  const box=$(selector),key=kind==='city'?'cities':kind==='wildlife'?'wildlife':'attractions',limit=discoverVisible[key];
+  box.className='suggestions inspiration-list';
+  box.innerHTML=data?.length?data.slice(0,limit).map(item=>inspirationCard(item,kind)).join('')+suggestionFooter(key,data.length,limit):`<div class="inspiration-empty"><span aria-hidden="true">${wishlistIcon(kind)}</span><div><h3>${kind==='city'?'Neue Lieblingsorte':kind==='wildlife'?'Welches Tier möchtest du sehen?':'Große Natur. Besondere Orte.'}</h3><p>Ideen laden oder gezielt selbst suchen.</p></div><button data-focus-search>Suchen</button></div>`;
+}
+function renderCitySuggestions(cities){renderInspiration('city',cities,'#citySuggestions');if(currentView==='discover'&&cities?.length)setTimeout(()=>enrichCitySuggestionThumbs(cities.slice(0,discoverVisible.cities)),0);}
 async function enrichCitySuggestionThumbs(cities){
-  const context=activeTrip()?.destination||'';
+  const context=discoveryCountry()?.name||'';
   for(const city of cities||[]){
     const k=`citythumb:${normalizeName(city.name)}:${(+city.lat||0).toFixed(3)}`;if(city.photo||city.photoChecked||verifiedEnrichmentPending.has(k))continue;verifiedEnrichmentPending.add(k);
-    try{const detail=await Providers.verifiedPlaceDetails(city,context,'city'),photos=await Providers.verifiedPhotosForItem(city,context,'city',detail);if(detail?.summary)city.summary=detail.summary;if(detail?.wiki)city.wiki=detail.wiki;if(photos[0]?.url){city.photo=photos[0].url;city.photoVerified=true}city.photoChecked=true;persistSoon();renderCitySuggestions(suggestionData('cities'));}catch(e){city.photoChecked=true;}finally{verifiedEnrichmentPending.delete(k)}
+    try{const detail=await Providers.verifiedPlaceDetails(city,city.country||context,'city'),photos=await Providers.verifiedPhotosForItem(city,city.country||context,'city',detail);if(detail?.summary)city.summary=detail.summary;if(detail?.wiki)city.wiki=detail.wiki;if(photos[0]?.url){city.photo=photos[0].url;city.photoVerified=true}city.photoChecked=true;persistSoon();renderCitySuggestions(suggestionData('cities'));}catch(e){city.photoChecked=true;}finally{verifiedEnrichmentPending.delete(k)}
   }
 }
-function renderAttractionSuggestions(attr){
-  const p=$('#poiSuggestions'),limit=discoverVisible.attractions;if(attr?.length){const shown=attr.slice(0,limit);p.className=`suggestions ${limit>5?'scrollsuggestions expanded':''}`;p.innerHTML=shown.map((x,i)=>`<div class="suggestion ${getWishlistEntry('highlight',x)?'wishselected':''}">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:`<div class="thumb sightthumb">★</div>`}<div><h4>${getWishlistEntry('highlight',x)?'✓ ':''}${esc(x.name)}</h4><p>${esc(x.highlightType||'Sehenswürdigkeit')}${x.summary?` · ${esc(x.summary.slice(0,90))}${x.summary.length>90?'…':''}`:''}</p></div><div class="suggestionactions"><button data-poi-detail='${esc(JSON.stringify({kind:'poi',...x}))}'>Entdecken</button>${wishlistControlHtml('highlight',x)}</div></div>`).join('')+suggestionFooter('attractions',attr.length,shown.length);}else{p.className='suggestions empty';p.textContent='Noch nicht geladen.'}
-}
-function renderWildlifeSuggestions(wild){
-  const w=$('#wildSuggestions'),limit=discoverVisible.wildlife;if(wild?.length){const shown=wild.slice(0,limit);w.className=`suggestions ${limit>5?'scrollsuggestions expanded':''}`;w.innerHTML=shown.map(x=>`<div class="suggestion ${getWishlistEntry('wildlife',x)?'wishselected':''}">${x.photo?`<img class="thumb" src="${esc(x.photo)}">`:'<div class="thumb sightthumb">🐾</div>'}<div><h4>${getWishlistEntry('wildlife',x)?'✓ ':''}${esc(x.name)}</h4><p><i>${esc(x.scientific)}</i> · ${x.count} Beobachtungen</p></div><div class="suggestionactions"><button data-wild-detail='${esc(JSON.stringify(x))}'>Entdecken</button>${wishlistControlHtml('wildlife',x)}</div></div>`).join('')+suggestionFooter('wildlife',wild.length,shown.length);}else{w.className='suggestions empty';w.textContent='Noch nicht geladen.'}
-}
+function renderAttractionSuggestions(items){renderInspiration('highlight',items,'#poiSuggestions');}
+function renderWildlifeSuggestions(items){renderInspiration('wildlife',items,'#wildSuggestions');}
 function suggestionData(kind){
-  const t=activeTrip();if(!t)return[];
-  if(kind==='cities')return state.cache.cities[`cities:v6:${normalizeName(t.country||t.destination)}`]||[];
-  if(kind==='attractions')return state.cache.wikidata[`attr:v6:${normalizeName(t.country||t.destination)}`]||[];
-  if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return state.cache.wildlife[`wild:v3:${normalizeName(t.destination)}:${month}`]||[];}
+  const t=activeTrip(),country=discoveryCountry();if(!t||!country)return[];const withCountry=items=>items.map(x=>Object.assign(x,{country:x.country||country.name,countryCode:x.countryCode||country.code}));
+  if(kind==='cities')return withCountry(state.cache.cities[`cities:v6:${normalizeName(country.name)}`]||[]);
+  if(kind==='attractions')return withCountry(state.cache.wikidata[`attr:v6:${normalizeName(country.name)}`]||[]);
+  if(kind==='wildlife'){const month=activeVersion()?.startDate?new Date(`${activeVersion().startDate}T12:00:00`).getMonth()+1:0;return withCountry(state.cache.wildlife[`wild:v3:${normalizeName(country.name)}:${month}`]||[]);}
   return[];
 }
 function changeSuggestionLimit(kind,more){
@@ -518,18 +641,25 @@ function autoLegDuration(distanceKm,mode){if(mode==='flight')return Math.max(60,
 function minutesToClock(base,min){return minToTime(timeToMin(base)+Math.round(min||0));}
 function autoRouteOrder(nodes){if(nodes.length<2)return nodes;const score=x=>(WISH_PRIORITIES[x.priority]?.weight||1)+(x.kind==='city'?0.4:0);let start=[...nodes].sort((a,b)=>score(b)-score(a)||(b.item?.population||0)-(a.item?.population||0))[0],rem=nodes.filter(x=>x!==start),out=[start],cur=start;while(rem.length){let bi=0,best=Infinity;for(let i=0;i<rem.length;i++){const d=haversine(cur,rem[i]),prio=WISH_PRIORITIES[rem[i].priority]?.weight||1,cost=d/(0.78+prio*.08);if(cost<best){best=cost;bi=i}}cur=rem.splice(bi,1)[0];out.push(cur)}return out;}
 async function resolveWishlistNodes(list,onStatus=null,trip=activeTrip(),version=activeVersion()) {
-  const month=Number(version?.startDate?.slice(5,7))||0,out=[];
+  const month=Number(version?.startDate?.slice(5,7))||0,out=[],countries=Discovery.countriesForTrip(trip);
+  const known=list.filter(Planner.hasLocation);
   for(let i=0;i<list.length;i++) {
     const x=list[i],node={...x,item:{...(x.item||{})},lat:Planner.coordinate(x.lat,90),lng:Planner.coordinate(x.lng,180)};
     if(x.kind==='wildlife'&&!Planner.hasLocation(node)) {
-      onStatus?.(`Wildlife-Hotspot ${i+1}/${list.length}: ${x.name}`);
+      onStatus?.(`Wildlife-Orte ${i+1}/${list.length}: ${x.name}`);
       try {
-        if(!x.item?.taxonId)throw new Error('Taxon-ID fehlt; Tier in Entdecken erneut auswählen.');
-        const h=await Providers.wildlifeBestHotspot(x.item.taxonId,trip.destination,month);
-        if(Planner.hasLocation(h)){node.lat=+h.lat;node.lng=+h.lng;node.hotspot=h;node.item.hotspot=h;}
-        else node.resolveError='Kein geeigneter, öffentlich lokalisierter Wildlife-Nachweis gefunden';
-      } catch(e) {node.resolveError=e.message;}
-    }
+        if(!x.item?.taxonId)throw new Error('Tierart oder Beobachtungsort noch zuordnen.');
+        const selected=x.countryCode||x.country?countries.filter(c=>c.code===x.countryCode&&c.code||c.name===x.country):countries;
+        const candidates=[],errors=[];
+        for(const country of selected.length?selected:countries) {
+          try {const h=await Providers.wildlifeBestHotspot(x.item.taxonId,country.name,month);if(Planner.hasLocation(h))candidates.push({...h,country:country.name,countryCode:country.code});}catch(error){errors.push(error.message);}
+        }
+        candidates.sort((a,b)=>known.length?Math.min(...known.map(k=>haversine(a,k)))-Math.min(...known.map(k=>haversine(b,k))):(b.count||0)-(a.count||0));
+        const h=candidates[0];
+        if(h){node.lat=h.lat;node.lng=h.lng;node.hotspot=h;node.country=h.country;node.countryCode=h.countryCode;node.item.hotspot=h;node.item.country=h.country;node.item.countryCode=h.countryCode;}
+        else node.resolveError=errors.length?'Wildlife-Daten nicht vollständig erreichbar; Ort bitte selbst auswählen':'Kein öffentlicher Nachweis in den gewählten Ländern und im Reisemonat gefunden';
+      }catch(error){node.resolveError=error.message;}
+    } else if(!Planner.hasLocation(node))node.resolveError='Eigener Wunsch gespeichert; Standort noch ergänzen';
     out.push(node);
   }
   return out;
@@ -538,6 +668,7 @@ function objectOpenIssues(obj,type='stop') {
   if(!obj)return[];const issues=[];
   const missing=value=>!String(value||'').trim()||/\boffen\b/i.test(value);
   if(type==='connection') {
+    if(obj.borderCrossing)issues.push('Länderwechsel: Fahrzeugfreigabe, Grenzübertritt und Ortszeiten prüfen');
     if(obj.mode==='other')issues.push('Verkehrsmittel noch festlegen');
     if(missing(obj.from))issues.push('Startort noch konkretisieren');
     if(missing(obj.to))issues.push('Zielort noch konkretisieren');
@@ -589,13 +720,13 @@ function syncConnectionTransfers(v,connection,previous=null){
 function issueBadgeHtml(issues){return issues?.length?`<div class="openissue"><b>⚠ ${issues.length} offen</b><span>${esc(issues[0])}${issues.length>1?` · +${issues.length-1}`:''}</span></div>`:'';}
 function planningIssueCount(v){let n=0;for(const c of v.connections||[])if(objectOpenIssues(c,'connection').length)n++;for(const tr of v.transfers||[])if(objectOpenIssues(tr,'transfer').length)n++;for(const d of v.days||[])for(const s of d.stops||[])if(objectOpenIssues(s,s.accommodation?'accommodation':'stop').length)n++;n+=(v.routeMeta?.deferred||[]).length;return n;}
 function makeAutoAccommodation(node,day,nextDate){return {id:uid('stop'),name:`Unterkunft ${node.kind==='city'?'in':'bei'} ${node.name} (offen)`,lat:node.lat,lng:node.lng,type:'hotel',priority:'high',durationMin:20,durationWish:20,notes:'Automatisch angelegter Unterkunfts-Platzhalter. Konkrete Unterkunft später auswählen.',openingHours:'',fixedStart:'18:00',images:[],tags:['auto-route','placeholder'],wildlife:[],modeToNext:'walk',routeToNext:null,planningPlaceholder:true,openIssues:['Konkrete Unterkunft auswählen'],accommodation:{kind:'Unterkunft offen',checkInDate:day.date,checkInTime:'15:00',checkOutDate:nextDate||day.date,checkOutTime:'10:00',address:'',bookingRef:'',planningPlaceholder:true}};}
-function makeAutoStop(node,fixedStart='11:00'){const htxt=`${node.item?.highlightType||''} ${node.name||''}`;const type=node.kind==='city'?'city':node.kind==='wildlife'?'wildlife':/(Nationalpark|Natur|Riff|Insel|Berg|Fels|Schlucht|Wasserfall|Küste|Strand|Park)/i.test(htxt)?'nature':'sight',issues=[];if(node.kind==='city')issues.push('Konkrete Sehenswürdigkeiten für die Stadt noch auswählen');if(node.kind==='wildlife')issues.push(node.hotspot?'Wildlife-Hotspot vor der Reise anhand aktueller Meldungen prüfen':'Geeigneten Wildlife-Hotspot noch festlegen');if(node.kind==='highlight')issues.push('Öffnungszeiten und sinnvolle Besuchsdauer noch prüfen');return {id:uid('stop'),name:node.kind==='wildlife'?`${node.name} – Wildlife-Hotspot`:node.name,lat:node.lat,lng:node.lng,type,priority:node.priority,durationMin:node.kind==='city'?180:90,durationWish:activityDurationForWish(node),notes:node.kind==='wildlife'&&node.hotspot?`Automatisch aus historischen iNaturalist-Beobachtungen abgeleiteter Hotspot (${node.hotspot.count} Beobachtungen im Cluster). Sichtung nicht garantiert.`:'Aus deiner Entdecken-Auswahl automatisch in den Routenvorschlag übernommen.',openingHours:'',fixedStart,images:node.item?.photo?[{url:node.item.photo,full:node.item.photo,title:node.name,page:''}]:[],tags:['auto-route',node.kind],wildlife:node.kind==='wildlife'?[node.name]:[],modeToNext:'car',routeToNext:null,planningPlaceholder:issues.length>0,openIssues:issues,wishlistKey:node.key};}
+function makeAutoStop(node,fixedStart='11:00'){const htxt=`${node.item?.highlightType||''} ${node.name||''}`;const type=node.kind==='city'?'city':node.kind==='wildlife'?'wildlife':/(Nationalpark|Natur|Riff|Insel|Berg|Fels|Schlucht|Wasserfall|Küste|Strand|Park)/i.test(htxt)?'nature':'sight',issues=[];if(node.kind==='city')issues.push('Konkrete Sehenswürdigkeiten für die Stadt noch auswählen');if(node.kind==='wildlife')issues.push(node.hotspot?'Wildlife-Hotspot vor der Reise anhand aktueller Meldungen prüfen':node.item?.isWildlifeLocation?'Eigenen Wildlife-Ort vor Ort prüfen':'Geeigneten Wildlife-Hotspot noch festlegen');if(node.kind==='highlight')issues.push('Öffnungszeiten und sinnvolle Besuchsdauer noch prüfen');return {id:uid('stop'),name:node.kind==='wildlife'&&!node.item?.isWildlifeLocation?`${node.name} – Wildlife-Ort`:node.name,lat:node.lat,lng:node.lng,type,priority:node.priority,durationMin:node.kind==='city'?180:90,durationWish:activityDurationForWish(node),notes:node.item?.notes|| (node.kind==='wildlife'&&node.hotspot?`Automatisch aus historischen iNaturalist-Beobachtungen abgeleiteter Hotspot (${node.hotspot.count} Beobachtungen im Cluster). Sichtung nicht garantiert.`:'Aus deiner Wunschliste in den Routenvorschlag übernommen.'),openingHours:'',fixedStart,images:node.item?.photo?[{url:node.item.photo,full:node.item.photo,title:node.name,page:''}]:[],tags:['auto-route',node.kind],wildlife:node.kind==='wildlife'?[node.name]:[],modeToNext:'car',routeToNext:null,planningPlaceholder:issues.length>0,openIssues:issues,wishlistKey:node.key,photography:node.photography?JSON.parse(JSON.stringify(node.photography)):null};}
 function makeAutoConnection(a,b,date,startTime='08:00'){const km=haversine(a,b),mode=autoLegMode(a,b,km),dur=autoLegDuration(km,mode),defs=connectionModeDefaults(mode),issues=[mode==='rentalcar'?'Mietwagen/Fahrzeug und konkrete Route noch festlegen':mode==='train'?'Konkrete Zugverbindung noch auswählen':'Konkreten Flug noch auswählen','Zeitangaben sind zunächst nur eine Planungsschätzung'];return {id:uid('conn'),mode,title:'Automatische Weiterreise',operator:'',number:'',reference:'',from:a.name,to:b.name,departDate:date,departTime:startTime,arriveDate:date,arriveTime:minutesToClock(startTime,dur),departureBuffer:defs.departureBuffer,arrivalBuffer:defs.arrivalBuffer,durationMin:dur,distanceKm:km,notes:'Automatisch vorgeschlagener Verbindungsbaustein. Verkehrsmittel und Buchungsdaten können später geändert werden.',planningPlaceholder:true,timeEstimated:true,openIssues:issues,autoSuggestedMode:mode};}
 function addAutoTransfers(v,conn,fromLodging,toLodging){if(!['flight','train','bus','ferry'].includes(conn.mode))return;const base=conn.mode==='flight'?45:20;if(fromLodging)v.transfers.push({id:uid('transfer'),sourceRef:`connection:${conn.id}`,toStopId:fromLodging.id,transferType:'to_airport',date:conn.departDate,fromName:fromLodging.name,toName:`${MODES[conn.mode]} Abfahrtsort (offen)`,fromLat:fromLodging.lat,fromLng:fromLodging.lng,toLat:null,toLng:null,mode:'transit',provider:'',reference:'',distanceKm:0,durationMin:base,extraBufferMin:10,approx:true,notes:'Automatischer Transfer-Platzhalter vor der Langstrecken-Verbindung.',planningPlaceholder:true,timeEstimated:true,openIssues:['Konkreten Abfahrtsort und Transferweg festlegen']});if(toLodging)v.transfers.push({id:uid('transfer'),sourceRef:`connection:${conn.id}`,toStopId:toLodging.id,transferType:'to_lodging',date:conn.arriveDate,fromName:`${MODES[conn.mode]} Ankunftsort (offen)`,toName:toLodging.name,fromLat:null,fromLng:null,toLat:toLodging.lat,toLng:toLodging.lng,mode:'transit',provider:'',reference:'',distanceKm:0,durationMin:base,extraBufferMin:10,approx:true,notes:'Automatischer Transfer-Platzhalter nach der Langstrecken-Verbindung.',planningPlaceholder:true,timeEstimated:true,openIssues:['Konkreten Ankunftsort und Transferweg festlegen']});}
 async function buildAutomaticRoute(opts={}) {
   const t=activeTrip(),base=activeVersion();if(!t||!base)throw new Error('Keine aktive Reise.');
   const list=JSON.parse(JSON.stringify(t.wishlist||[]));if(!list.length)throw new Error('Wähle zuerst mindestens ein Ziel aus.');
-  const options={...t.routePreferences,...opts,startDate:base.startDate,endDate:base.endDate,dayStart:state.settings.defaultStart,dayEnd:state.settings.defaultEnd,legs:{}};
+  const options={dayStart:state.settings.defaultStart,dayEnd:state.settings.defaultEnd,...t.routePreferences,...opts,startDate:base.startDate,endDate:base.endDate,legs:{}};
   const nodes=await resolveWishlistNodes(list,opts.onStatus,t,base);
   let result=Planner.plan(nodes,options);
   // Re-evaluate feasibility using road routes for every accepted neighbouring pair.
@@ -622,7 +753,7 @@ async function buildAutomaticRoute(opts={}) {
   }
   if(!result.includedKeys.length)throw new Error(result.deferred[0]?.reason||'Kein Ziel passt in den Zeitraum.');
   if(!state.trips.includes(t)||!t.versions.includes(base))throw new Error('Die Ausgangsreise wurde während der Planung entfernt.');
-  const v={id:uid('ver'),name:opts.name||'Auto-Route aus Wunschliste',startDate:base.startDate,endDate:base.endDate,days:[],flights:[],connections:[],transfers:[],createdAt:Date.now(),routeMeta:{source:'wishlist',generatorVersion:'1.3.0',sourceVersionId:base.id,sourceVersionName:base.name,generatedAt:Date.now(),wishlistKeys:list.map(x=>x.key),includedKeys:result.includedKeys,deferred:result.deferred.map(x=>({key:x.key,name:x.name,priority:x.priority,reason:x.reason})),missingMust:result.missingMust.map(x=>x.key),flexDays:result.days.filter(d=>!d.events.length).length,options:{...options,legs:undefined,onStatus:undefined}}};
+  const v={id:uid('ver'),name:opts.name||'Auto-Route aus Wunschliste',startDate:base.startDate,endDate:base.endDate,countries:Discovery.countriesForTrip(t),days:[],flights:[],connections:[],transfers:[],createdAt:Date.now(),routeMeta:{source:'wishlist',generatorVersion:'1.4.0',sourceVersionId:base.id,sourceVersionName:base.name,generatedAt:Date.now(),wishlistKeys:list.map(x=>x.key),includedKeys:result.includedKeys,deferred:result.deferred.map(x=>({key:x.key,name:x.name,priority:x.priority,reason:x.reason})),missingMust:result.missingMust.map(x=>x.key),flexDays:result.days.filter(d=>!d.events.length).length,options:{...options,legs:undefined,onStatus:undefined}}};
   const lodgingByDay=new Map();let previousLodging=null,previousLodgingKey=null;
   for(let di=0;di<result.days.length;di++) {
     const planned=result.days[di],day={id:uid('day'),date:planned.date,startTime:options.dayStart,endTime:options.dayEnd,stops:[],planningNote:planned.events.length?'':'Freier Tag am letzten Aufenthaltsort – weitere Aktivitäten können ergänzt werden.'};
@@ -631,11 +762,11 @@ async function buildAutomaticRoute(opts={}) {
         const stop=makeAutoStop(event.node,Planner.clock(event.start));
         stop.durationWish=event.end-event.start;stop.durationMin=Math.min(stop.durationMin,stop.durationWish);
         if(event.part>1)stop.name+=` – Aufenthaltstag ${event.part}`;
-        Object.assign(stop,{wikidata:event.node.item?.wikidata||'',wiki:event.node.item?.wiki||event.node.item?.wikiTag||'',taxonId:event.node.item?.taxonId||null,sourceMeta:{source:event.node.kind==='wildlife'?'iNaturalist':event.node.item?.source||'Entdecken',retrievedAt:event.node.hotspot?.retrievedAt||Date.now(),hotspot:event.node.hotspot||null},planningPlaceholder:true});
+        Object.assign(stop,{country:event.node.country||event.node.item?.country||'',countryCode:event.node.countryCode||event.node.item?.countryCode||'',wikidata:event.node.item?.wikidata||'',wiki:event.node.item?.wiki||event.node.item?.wikiTag||'',taxonId:event.node.item?.taxonId||null,sourceMeta:{source:event.node.item?.customId?'Eigener Ort':event.node.kind==='wildlife'?'iNaturalist':event.node.item?.source||'Entdecken',retrievedAt:event.node.hotspot?.retrievedAt||Date.now(),hotspot:event.node.hotspot||null},planningPlaceholder:true});
         day.stops.push(stop);
       } else {
         const e=event,l=e.leg;
-        const c={id:uid('conn'),mode:l.mode,title:'Weiterreise',operator:'',number:'',reference:'',from:e.from.name,to:e.to.name,fromLat:e.from.lat,fromLng:e.from.lng,toLat:e.to.lat,toLng:e.to.lng,fromWishlistKey:e.from.key,toWishlistKey:e.to.key,departDate:day.date,arriveDate:day.date,departTime:Planner.clock(e.start),arriveTime:Planner.clock(e.end),departureBuffer:l.departureBuffer||0,arrivalBuffer:l.arrivalBuffer||0,durationMin:e.end-e.start,distanceKm:l.distanceKm,geometry:l.geometry||null,approx:!!l.approx,source:l.source,drivingMin:l.drivingMin||0,notes:`${l.source||'Planungsschätzung'}. ${l.breakMin?`${l.breakMin} Minuten Fahrtpause enthalten. `:''}${l.mode==='flight'?'Vorgeschlagenes Verkehrsmittel; Flugverfügbarkeit, Flughäfen und lokale Zeiten prüfen.':'Fahrzeug und befahrbare Strecke prüfen.'}`,planningPlaceholder:true,timeEstimated:true,openIssues:[]};
+        const c={id:uid('conn'),mode:l.mode,title:'Weiterreise',operator:'',number:'',reference:'',from:e.from.name,to:e.to.name,fromLat:e.from.lat,fromLng:e.from.lng,toLat:e.to.lat,toLng:e.to.lng,fromWishlistKey:e.from.key,toWishlistKey:e.to.key,fromCountry:l.fromCountry||e.from.country||e.from.item?.country||'',toCountry:l.toCountry||e.to.country||e.to.item?.country||'',borderCrossing:l.countryChange||Discovery.crossesBorder(e.from,e.to),departDate:day.date,arriveDate:day.date,departTime:Planner.clock(e.start),arriveTime:Planner.clock(e.end),departureBuffer:l.departureBuffer||0,arrivalBuffer:l.arrivalBuffer||0,durationMin:e.end-e.start,distanceKm:l.distanceKm,geometry:l.geometry||null,approx:!!l.approx,source:l.source,drivingMin:l.drivingMin||0,notes:`${l.countryChange||Discovery.crossesBorder(e.from,e.to)?'Länderwechsel: Grenzübertritt, Fahrzeugfreigabe und lokale Zeiten prüfen. ':''}${l.source||'Planungsschätzung'}. ${l.breakMin?`${l.breakMin} Minuten Fahrtpause enthalten. `:''}${l.mode==='flight'?'Vorgeschlagenes Verkehrsmittel; Flugverfügbarkeit, Flughäfen und lokale Zeiten prüfen.':'Fahrzeug und befahrbare Strecke prüfen.'}`,planningPlaceholder:true,timeEstimated:true,openIssues:[]};
         v.connections.push(c);
         if(l.mode==='flight')c.autoTransfers={before:l.transferBefore,after:l.transferAfter,dayIndex:di};
       }
@@ -665,15 +796,15 @@ async function buildAutomaticRoute(opts={}) {
   v.transfers.push(boundaryTransfer(departure,'to_airport',lodgingByDay.get(result.days.length-2),last));
   const conflicts=v.days.flatMap(day=>computeDay(v,day).conflicts.map(message=>`${day.date}: ${message}`));
   if(conflicts.length)throw new Error(`Ankunft, Abfahrt oder Tageszeiten passen nicht zum Entwurf. Bitte Zeitfenster anpassen. ${conflicts[0]}`);
-  t.routePreferences={startKey:options.startKey||'',endKey:options.endKey||'',roadMode:options.roadMode||'rentalcar',allowFlights:options.allowFlights!==false,maxDriveMin:options.maxDriveMin||360,arrivalTime:options.arrivalTime||'10:00',departureTime:options.departureTime||'18:00'};
+  t.routePreferences={dayStart:options.dayStart,dayEnd:options.dayEnd,startKey:options.startKey||'',endKey:options.endKey||'',roadMode:options.roadMode||'rentalcar',allowFlights:options.allowFlights!==false,orderMode:options.orderMode||'geographic',maxVisitMin:options.maxVisitMin||360,maxDriveMin:options.maxDriveMin||360,arrivalTime:options.arrivalTime||'10:00',departureTime:options.departureTime||'18:00'};
   t.versions.push(v);t.selectedVersionId=v.id;persistSoon();return v;
 }
 function autoRouteModal() {
   const t=activeTrip(),v=activeVersion(),list=t?.wishlist||[];if(!t||!v||!list.length){toast('Wähle zuerst Städte, Highlights oder Tiere aus.');return;}
   const pref=t.routePreferences||{},select=(selected)=>`<option value="">Automatisch</option>${list.filter(x=>x.kind!=='wildlife'||Planner.hasLocation(x)).map(x=>`<option value="${esc(x.key)}" ${x.key===selected?'selected':''}>${esc(x.name)}</option>`).join('')}`;
-  showModal(`<h2>Routenvorschlag erstellen</h2><p class="lead">Aufenthalte, Fahrten, Pausen und Übernachtungen werden gemeinsam auf die verfügbaren Tage verteilt. Deine bisherige Version bleibt erhalten.</p><div class="formgrid"><label>Name der neuen Version<input id="mAutoRouteName" value="Auto-Route aus Wunschliste"></label><label>Startziel<select id="mAutoStart">${select(pref.startKey)}</select></label><label>Letztes Ziel<select id="mAutoEnd">${select(pref.endKey)}</select></label><label>Fahrzeug<select id="mAutoMode">${['rentalcar','camper','car'].map(k=>`<option value="${k}" ${(pref.roadMode||'rentalcar')===k?'selected':''}>${MODES[k]}</option>`).join('')}</select></label><label>Höchstens Fahrstunden je Tag<input id="mAutoDrive" type="number" min="1" max="10" value="${(pref.maxDriveMin||360)/60}"></label><label>Ankunft am ersten Tag (Entwurf)<input id="mAutoArrival" type="time" value="${esc(pref.arrivalTime||'10:00')}"></label><label>Abfahrt am letzten Tag (Entwurf)<input id="mAutoDeparture" type="time" value="${esc(pref.departureTime||'18:00')}"></label></div><div class="formgrid one"><label class="checkline"><input id="mAutoFlights" type="checkbox" ${pref.allowFlights!==false?'checked':''}> Für große Entfernungen Flüge vorschlagen</label><label class="checkline"><input id="mAutoIncludeOptional" type="checkbox" checked> Optionale Ziele einplanen, soweit sie passen</label></div><p class="tiny">Flugverfügbarkeit und Ortszeiten sind offen. Bestehende Buchungen werden in dieser neuen Variante nicht übernommen; vergleiche die Variante anschließend mit „${esc(v.name)}“.</p><div class="warnline">⚠ Nicht passende Wünsche bleiben mit Begründung sichtbar. Fehlende Muss-Ziele werden gesondert markiert.</div><div id="autoRouteStatus" class="tiny"></div><div class="actions"><button data-close-modal>Abbrechen</button><button id="buildAutoRouteBtn" class="primary">Routenvorschlag erstellen</button></div>`,()=>{
+  showModal(`<h2>Deine Wünsche werden zur Route</h2><p class="lead">Aufenthalte, Fahrten, Pausen und Übernachtungen werden gemeinsam auf die verfügbaren Tage verteilt. Deine bisherige Version bleibt erhalten.</p><div class="formgrid"><label>Name der neuen Version<input id="mAutoRouteName" value="Auto-Route aus Wunschliste"></label><label>Startziel<select id="mAutoStart">${select(pref.startKey)}</select></label><label>Letztes Ziel<select id="mAutoEnd">${select(pref.endKey)}</select></label><label>Fahrzeug<select id="mAutoMode">${['rentalcar','camper','car'].map(k=>`<option value="${k}" ${(pref.roadMode||'rentalcar')===k?'selected':''}>${MODES[k]}</option>`).join('')}</select></label><label>Reihenfolge<select id="mAutoOrder"><option value="geographic" ${pref.orderMode!=='wishlist'?'selected':''}>Nach Nähe ordnen</option><option value="wishlist" ${pref.orderMode==='wishlist'?'selected':''}>Meine Wunschlisten-Reihenfolge</option></select></label><label>Aktivitäten pro Tag<select id="mAutoPace"><option value="240" ${pref.maxVisitMin===240?'selected':''}>Entspannt · bis 4 Stunden</option><option value="360" ${!pref.maxVisitMin||pref.maxVisitMin===360?'selected':''}>Ausgewogen · bis 6 Stunden</option><option value="480" ${pref.maxVisitMin===480?'selected':''}>Intensiv · bis 8 Stunden</option></select></label><label>Tag beginnt<input id="mAutoDayStart" type="time" value="${esc(pref.dayStart||state.settings.defaultStart)}"></label><label>Tag endet<input id="mAutoDayEnd" type="time" value="${esc(pref.dayEnd||state.settings.defaultEnd)}"></label><label>Höchstens Fahrstunden je Tag<input id="mAutoDrive" type="number" min="1" max="10" value="${(pref.maxDriveMin||360)/60}"></label><label>Ankunft am ersten Tag (Entwurf)<input id="mAutoArrival" type="time" value="${esc(pref.arrivalTime||'10:00')}"></label><label>Abfahrt am letzten Tag (Entwurf)<input id="mAutoDeparture" type="time" value="${esc(pref.departureTime||'18:00')}"></label></div><div class="formgrid one"><label class="checkline"><input id="mAutoFlights" type="checkbox" ${pref.allowFlights!==false?'checked':''}> Für große Entfernungen Flüge vorschlagen</label><label class="checkline"><input id="mAutoIncludeOptional" type="checkbox" checked> Optionale Ziele einplanen, soweit sie passen</label></div><p class="tiny">Flugverfügbarkeit und Ortszeiten sind offen. Bestehende Buchungen werden in dieser neuen Variante nicht übernommen; vergleiche die Variante anschließend mit „${esc(v.name)}“.</p><div class="warnline">⚠ Nicht passende Wünsche bleiben mit Begründung sichtbar. Fehlende Muss-Ziele werden gesondert markiert.</div><div id="autoRouteStatus" class="tiny"></div><div class="actions"><button data-close-modal>Abbrechen</button><button id="buildAutoRouteBtn" class="primary">Routenvorschlag erstellen</button></div>`,()=>{
     $('#buildAutoRouteBtn').onclick=async()=>{
-      const btn=$('#buildAutoRouteBtn'),status=$('#autoRouteStatus'),settings={name:$('#mAutoRouteName').value.trim()||'Auto-Route aus Wunschliste',startKey:$('#mAutoStart').value,endKey:$('#mAutoEnd').value,roadMode:$('#mAutoMode').value,allowFlights:$('#mAutoFlights').checked,maxDriveMin:+$('#mAutoDrive').value*60,arrivalTime:$('#mAutoArrival').value,departureTime:$('#mAutoDeparture').value,includeOptional:$('#mAutoIncludeOptional').checked,onStatus:m=>{status.textContent=m;}};
+      const btn=$('#buildAutoRouteBtn'),status=$('#autoRouteStatus'),settings={dayStart:$('#mAutoDayStart').value,dayEnd:$('#mAutoDayEnd').value,name:$('#mAutoRouteName').value.trim()||'Auto-Route aus Wunschliste',startKey:$('#mAutoStart').value,endKey:$('#mAutoEnd').value,roadMode:$('#mAutoMode').value,orderMode:$('#mAutoOrder').value,maxVisitMin:+$('#mAutoPace').value,allowFlights:$('#mAutoFlights').checked,maxDriveMin:+$('#mAutoDrive').value*60,arrivalTime:$('#mAutoArrival').value,departureTime:$('#mAutoDeparture').value,includeOptional:$('#mAutoIncludeOptional').checked,onStatus:m=>{status.textContent=m;}};
       if(settings.startKey&&settings.startKey===settings.endKey){status.textContent='Für eine Rundreise zunächst verschiedene Start- und Endziele wählen und die Rückfahrt anschließend ergänzen.';return;}
       if(settings.maxDriveMin<60||settings.maxDriveMin>600||!settings.arrivalTime||!settings.departureTime){status.textContent='Bitte gültige Fahrstunden und Zeiten eintragen.';return;}
       btn.disabled=true;btn.textContent='Plant …';
@@ -752,10 +883,15 @@ function computeDay(v,day) {
   const c=dayConstraints(v,day);let cur=c.windows[0]?.start??c.dayStart,km=0,travel=0,visit=0,overrun=0;const rows=[],conflicts=[];
   for(let i=0;i<day.stops.length;i++) {
     const s=day.stops[i],dur=Math.max(0,+(s.durationWish??s.durationMin??0)),fixed=timeToMin(s.fixedStart);
-    const slot=fixed===null?fitWindow(c.windows,cur,dur):{start:fixed,end:fixed+dur};
+    const photo=s.photography||{},hasPhotoWindow=!!(photo.windowStart||photo.windowEnd);
+    const photoStart=timeToMin(photo.windowStart),photoEnd=timeToMin(photo.windowEnd);
+    const validPhotoWindow=photoStart!==null&&photoEnd!==null&&photoEnd>photoStart;
+    const windows=hasPhotoWindow&&validPhotoWindow?c.windows.map(w=>({start:Math.max(w.start,photoStart),end:Math.min(w.end,photoEnd)})).filter(w=>w.end>w.start):c.windows;
+    const slot=fixed===null?fitWindow(windows,cur,dur):{start:fixed,end:fixed+dur};
     const fits=c.windows.some(w=>slot.start>=w.start&&slot.end<=w.end),overlap=slot.start<cur;
-    const overflow=!!slot.overflow||!fits||overlap;
-    if(overflow){conflicts.push(`${s.name}: ${overlap?'Reihenfolge oder Fixzeit kollidiert':'kein passendes Zeitfenster'}`);overrun+=Math.max(1,slot.end-c.dayEnd,cur-slot.start);}
+    const photoConflict=hasPhotoWindow&&(!validPhotoWindow||slot.start<photoStart||slot.end>photoEnd);
+    const overflow=!!slot.overflow||!fits||overlap||photoConflict;
+    if(overflow){conflicts.push(`${s.name}: ${photoConflict?'Aufnahme liegt außerhalb des Fotozeitfensters':overlap?'Reihenfolge oder Fixzeit kollidiert':'kein passendes Zeitfenster'}`);overrun+=Math.max(1,slot.end-c.dayEnd,cur-slot.start,photoConflict&&validPhotoWindow?Math.max(photoStart-slot.start,slot.end-photoEnd):0);}
     rows.push({stop:s,arrival:slot.start,departure:slot.end,overflow});visit+=dur;cur=Math.max(cur,slot.end);
     if(s.routeToNext&&i<day.stops.length-1) {
       const legDur=Math.max(0,+s.routeToNext.durationMin||0),legSlot=fitWindow(c.windows,cur,legDur);travel+=legDur;km+=s.routeToNext.distanceKm||0;cur=legSlot.end;
@@ -767,9 +903,9 @@ function computeDay(v,day) {
 }
 function renderPlanner(){
   const t=activeTrip(),v=activeVersion(),sum=$('#planSummary'),box=$('#daysTimeline');if(!t||!v){sum.innerHTML='';box.innerHTML='<div class="card">Keine Reiseversion ausgewählt.</div>';return;}
-  const m=versionMetrics(v),issues=planningIssueCount(v);sum.innerHTML=`<div class="summarybox"><b>${v.days.length}</b><small>Tage</small></div><div class="summarybox"><b>${m.stops}</b><small>Stopps</small></div><div class="summarybox"><b>${Math.round(m.km)}</b><small>km</small></div><div class="summarybox"><b>${durText(m.travel)}</b><small>Fahrt</small></div><div class="summarybox ${issues?'issuesummary':''}"><b>${issues?'⚠ '+issues:'✓ 0'}</b><small>offene Punkte</small></div>`;
-  box.innerHTML=v.routeMeta?.source==='wishlist'?`<div class="card autoroutecard"><div class="sectiontitle"><span>✨ Automatischer Routenvorschlag</span><span>${(v.routeMeta.wishlistKeys||[]).length} Wünsche</span></div><p class="tiny">Dieser Entwurf wurde aus deiner Entdecken-Auswahl, Prioritäten und geografischer Nähe aufgebaut.${v.routeMeta.flexDays?` ${v.routeMeta.flexDays} Reisetag${v.routeMeta.flexDays===1?' ist':'e sind'} bewusst noch flexibel.`:''}</p></div>`:'';if(v.routeMeta?.deferred?.length)box.insertAdjacentHTML('beforeend',`<div class="card routeissuescard"><div class="sectiontitle"><span>⚠ Nicht eingeplante Auswahl</span><span>${v.routeMeta.deferred.length}</span></div><p class="tiny">Diese Wünsche bleiben in deiner Auswahl, konnten aber im ersten automatischen Entwurf noch nicht sinnvoll untergebracht werden.</p>${v.routeMeta.deferred.map(x=>`<div class="deferreditem">${x.priority==='must'?'‼ Muss-Ziel: ':''}${esc(x.name)} <small>${esc(x.reason||'offen')}</small></div>`).join('')}</div>`);v.days.forEach((day,di)=>{const comp=computeDay(v,day),el=document.createElement('div');el.className='daycard';const connections=versionConnections(v).filter(f=>f.departDate===day.date||f.arriveDate===day.date),transfers=(v.transfers||[]).filter(x=>x.date===day.date);el.innerHTML=`
-    <div class="dayhead"><div class="daydate"><span class="daycolor" style="background:${DAY_COLORS[di%DAY_COLORS.length]}"></span><div><h3>Tag ${di+1} · ${fmtShortDate(day.date)}</h3><p>${comp.windows.length?comp.windows.map(w=>`${minToTime(w.start)}–${minToTime(w.end)}`).join(' / '):'kein freies Zeitfenster'} · ${durText(comp.available)} frei · ${comp.buffer>=0?`${durText(comp.buffer)} Puffer`:`${durText(-comp.buffer)} überplant`}</p></div></div><button data-day-toggle="${day.id}">⌄</button></div>
+  const m=versionMetrics(v),issues=planningIssueCount(v);$('#toggleAllDays').textContent=v.days.every(d=>d.collapsed)?'Tage ausklappen':'Tage einklappen';sum.innerHTML=`<div class="summarybox"><b>${v.days.length}</b><small>Tage</small></div><div class="summarybox"><b>${m.stops}</b><small>Stopps</small></div><div class="summarybox"><b>${Math.round(m.km)}</b><small>km</small></div><div class="summarybox"><b>${durText(m.travel)}</b><small>Fahrt</small></div><div class="summarybox ${issues?'issuesummary':''}"><b>${issues?'⚠ '+issues:'✓ 0'}</b><small>offene Punkte</small></div>`;
+  box.innerHTML=v.routeMeta?.source==='wishlist'?`<div class="card autoroutecard"><div class="sectiontitle"><span>Deine Wünsche, als Route</span><span>${(v.routeMeta.includedKeys||[]).length} von ${(v.routeMeta.wishlistKeys||[]).length}</span></div><p class="tiny">Muss-Ziele werden zuerst berücksichtigt. Fahrten, Pausen und Aufenthalte teilen sich das Tagesbudget. Die Reihenfolge folgt deiner gewählten Einstellung.${v.routeMeta.flexDays?` ${v.routeMeta.flexDays} Reisetag${v.routeMeta.flexDays===1?' ist':'e sind'} bewusst noch flexibel.`:''}</p></div>`:'';if(v.routeMeta?.deferred?.length)box.insertAdjacentHTML('beforeend',`<div class="card routeissuescard"><div class="sectiontitle"><span>⚠ Nicht eingeplante Auswahl</span><span>${v.routeMeta.deferred.length}</span></div><p class="tiny">Diese Wünsche bleiben in deiner Auswahl, konnten aber im ersten automatischen Entwurf noch nicht sinnvoll untergebracht werden.</p>${v.routeMeta.deferred.map(x=>`<div class="deferreditem">${x.priority==='must'?'‼ Muss-Ziel: ':''}${esc(x.name)} <small>${esc(x.reason||'offen')}</small></div>`).join('')}</div>`);v.days.forEach((day,di)=>{const comp=computeDay(v,day),el=document.createElement('div');el.className='daycard';const connections=versionConnections(v).filter(f=>f.departDate===day.date||f.arriveDate===day.date),transfers=(v.transfers||[]).filter(x=>x.date===day.date);el.innerHTML=`
+    <div class="dayhead"><div class="daydate"><span class="daycolor" style="background:${DAY_COLORS[di%DAY_COLORS.length]}"></span><div><h3>Tag ${di+1} · ${fmtShortDate(day.date)}</h3><p>${comp.windows.length?comp.windows.map(w=>`${minToTime(w.start)}–${minToTime(w.end)}`).join(' / '):'kein freies Zeitfenster'} · ${durText(comp.available)} frei · ${comp.buffer>=0?`${durText(comp.buffer)} Puffer`:`${durText(-comp.buffer)} überplant`}</p></div></div><button data-day-toggle="${day.id}" aria-label="Tag ${di+1} ein- oder ausklappen" aria-expanded="${!day.collapsed}">⌄</button></div>
     <div class="daybody" id="body_${day.id}" ${day.collapsed?'hidden':''}><div class="daytools"><button data-day-time="${day.id}">⏱ Tageszeit</button><button data-day-add="${day.id}">+ Stopp</button><button data-day-accommodation="${day.id}">🛏 Unterkunft</button><button data-city-tour="${day.id}">🏙 Stadttour</button><button data-route-day="${day.id}">↻ Strecken</button></div>
       ${comp.notes.length?`<div class="warnline">🧭 ${comp.notes.join(' · ')}</div>`:''}
       ${accommodationsForDate(v,day.date).length?`<p class="lodgingmeta">🛏 Übernachtung: ${accommodationsForDate(v,day.date).map(x=>esc(x.stop.name)).join(' / ')}</p>`:''}
@@ -783,25 +919,34 @@ function renderPlanner(){
 }
 function connectionHtml(c){const issues=objectOpenIssues(c,'connection');return `<div class="stop flightcard ${issues.length?'hasissues':''}"><div class="stoprow"><div class="stopicon">${esc((MODES[c.mode]||'•').split(' ')[0])}</div><div><h4>${issues.length?'⚠ ':''}${esc(c.number||c.title||'Verbindung')} · ${esc(c.from)} → ${esc(c.to)}</h4><div class="stopmeta">${MODES[c.mode]||esc(c.mode)} · ${fmtShortDate(c.departDate)} ${esc(c.departTime)} → ${fmtShortDate(c.arriveDate)} ${esc(c.arriveTime)}${c.distanceKm?`<br>${kmText(c.distanceKm)} · ${durText(c.durationMin||0)}${c.approx?' · geschätzt':''}`:''}<br>Puffer: ${durText(c.departureBuffer||0)} vor Abfahrt · ${durText(c.arrivalBuffer||0)} nach Ankunft${c.notes?`<br>${esc(c.notes)}`:''}</div>${issueBadgeHtml(issues)}</div><div class="stopactions"><button data-connection-transfer="${esc(c.sourceRef)}" title="Transfer anlegen">↔</button><button ${c.legacyFlight?`data-edit-flight="${c.id}"`:`data-edit-connection="${c.id}"`}>✎</button></div></div></div>`}
 function transferHtml(x){const extra=+x.extraBufferMin||0,total=transferTotalMin(x),issues=objectOpenIssues(x,'transfer');return `<div class="stop transfercard ${issues.length?'hasissues':''}"><div class="stoprow"><div class="stopicon">↔</div><div><h4>${issues.length?'⚠ ':''}${esc(transferLabel(x))} · ${esc(x.fromName||'Start')} → ${esc(x.toName||'Ziel')}</h4><div class="stopmeta">${MODES[x.mode]||esc(x.mode)} · ${kmText(x.distanceKm)} · ${durText(total)} gesamt${extra?` (${durText(x.durationMin)} Fahrt + ${durText(extra)} Zusatzpuffer)`:''}${x.approx?' · ca.':''}${x.provider?`<br>${esc(x.provider)}`:''}${x.notes?`<br>${esc(x.notes)}`:''}</div>${issueBadgeHtml(issues)}</div><button data-edit-transfer="${x.id}">✎</button></div></div>`}
-function stopHtml(day,r,i,count,di){const s=r.stop,leg=s.routeToNext&&i<count-1?s.routeToNext:null,a=s.accommodation,issues=objectOpenIssues(s,a?'accommodation':'stop');return `<div class="stop ${a?'accommodationcard':''} ${issues.length?'hasissues':''}" data-stop="${s.id}"><div class="stoprow"><div class="stopicon">${STOP_ICONS[s.type]||'•'}</div><div><h4>${issues.length?'⚠ ':''}${r.overflow?'⚠ Zeitkonflikt · ':''}${minToTime(r.arrival)}–${minToTime(r.departure)}${r.departure>=1440?' (+Folgetag)':''} · ${esc(s.name)}</h4><div class="stopmeta"><span class="priority ${s.priority}">${priorityText(s.priority)}</span>${durText(s.durationWish||s.durationMin)}${s.openingHours?` · geöffnet: ${esc(s.openingHours)}`:''}${a?`<span class="lodgingmeta">${esc(a.kind||'Unterkunft')} · Check-in ${fmtShortDate(a.checkInDate)}${a.checkInTime?` ${esc(a.checkInTime)}`:''} · Check-out ${fmtShortDate(a.checkOutDate)}${a.checkOutTime?` ${esc(a.checkOutTime)}`:''}${a.address?`<br>${esc(a.address)}`:''}</span>`:''}${s.notes?`<br>${esc(s.notes)}`:''}</div>${issueBadgeHtml(issues)}</div><div class="stopactions"><button data-move-stop="${s.id}" data-dir="-1">↑</button><button data-move-stop="${s.id}" data-dir="1">↓</button><button data-edit-stop="${s.id}">✎</button><button data-delete-stop="${s.id}">×</button></div></div></div>${leg?`<div class="leg"><div class="legline"></div><div>${MODES[s.modeToNext]||s.modeToNext} · ${kmText(leg.distanceKm)} · ${durText(leg.durationMin)}${leg.approx?' · ca.':''}</div></div>`:''}`}
+function stopHtml(day,r,i,count,di){const s=r.stop,leg=s.routeToNext&&i<count-1?s.routeToNext:null,a=s.accommodation,issues=objectOpenIssues(s,a?'accommodation':'stop');return `<div class="stop ${a?'accommodationcard':''} ${issues.length?'hasissues':''}" data-stop="${s.id}"><div class="stoprow"><div class="stopicon">${STOP_ICONS[s.type]||'•'}</div><div><h4>${issues.length?'⚠ ':''}${r.overflow?'⚠ Zeitkonflikt · ':''}${minToTime(r.arrival)}–${minToTime(r.departure)}${r.departure>=1440?' (+Folgetag)':''} · ${esc(s.name)}</h4><div class="stopmeta"><span class="priority ${s.priority}">${priorityText(s.priority)}</span>${durText(s.durationWish||s.durationMin)}${s.openingHours?` · geöffnet: ${esc(s.openingHours)}`:''}${a?`<span class="lodgingmeta">${esc(a.kind||'Unterkunft')} · Check-in ${fmtShortDate(a.checkInDate)}${a.checkInTime?` ${esc(a.checkInTime)}`:''} · Check-out ${fmtShortDate(a.checkOutDate)}${a.checkOutTime?` ${esc(a.checkOutTime)}`:''}${a.address?`<br>${esc(a.address)}`:''}</span>`:''}${s.notes?`<details class="stop-notes"><summary>Notizen</summary><p>${esc(s.notes)}</p></details>`:''}${photographyHtml(s.photography)}</div>${issueBadgeHtml(issues)}</div><div class="stopactions"><button data-move-stop="${s.id}" data-dir="-1">↑</button><button data-move-stop="${s.id}" data-dir="1">↓</button><button data-edit-stop="${s.id}">✎</button><button data-delete-stop="${s.id}">×</button></div></div></div>${leg?`<div class="leg"><div class="legline"></div><div>${MODES[s.modeToNext]||s.modeToNext} · ${kmText(leg.distanceKm)} · ${durText(leg.durationMin)}${leg.approx?' · ca.':''}</div></div>`:''}`}
 function priorityText(p){return p==='must'?'MUSS':p==='high'?'HOCH':p==='optional'?'OPTIONAL':'NORMAL'}
 function renderCompare(){
   const t=activeTrip(),a=$('#compareA'),b=$('#compareB');a.innerHTML=b.innerHTML='';if(!t)return;(t.versions||[]).forEach((v,i)=>{for(const sel of[a,b]){const o=document.createElement('option');o.value=v.id;o.textContent=v.name;sel.appendChild(o)}if(i===0)a.value=v.id;if(i===1)b.value=v.id});if(t.versions.length===1)b.value=t.versions[0].id;renderCompareResult();
 }
 function renderCompareResult(){const t=activeTrip();if(!t)return;const va=t.versions.find(v=>v.id===$('#compareA').value),vb=t.versions.find(v=>v.id===$('#compareB').value),box=$('#compareResult');if(!va||!vb){box.innerHTML='<div class="card">Mindestens eine Version fehlt.</div>';return}const A=versionMetrics(va),B=versionMetrics(vb);const rows=[['Reisetage',A.days,B.days,''],['Stopps',A.stops,B.stops,''],['Pflichtstopps',A.must,B.must,''],['Wildlife-Stopps',A.wild,B.wild,''],['Strecke',Math.round(A.km),Math.round(B.km),' km'],['Transferzeit',Math.round(A.travel),Math.round(B.travel),' min'],['Aufenthaltszeit',Math.round(A.visit),Math.round(B.visit),' min']];const namesA=new Set(va.days.flatMap(d=>d.stops.map(s=>s.name))),namesB=new Set(vb.days.flatMap(d=>d.stops.map(s=>s.name)));const added=[...namesB].filter(x=>!namesA.has(x)),removed=[...namesA].filter(x=>!namesB.has(x));box.innerHTML=`<div class="card"><div class="compgrid"><div class="head">Kennzahl</div><div class="head">${esc(va.name)}</div><div class="head">${esc(vb.name)}</div>${rows.map(r=>`<div>${r[0]}</div><div>${r[1]}${r[3]}</div><div>${r[2]}${r[3]} ${r[2]!==r[1]?`<span class="${r[2]>r[1]?'deltaPlus':'deltaMinus'}">(${r[2]>r[1]?'+':''}${r[2]-r[1]}${r[3]})</span>`:''}</div>`).join('')}</div></div><div class="card"><div class="sectiontitle">Geänderte Stopps</div><p><b>Hinzugefügt:</b> ${added.length?added.map(esc).join(', '):'keine'}</p><p><b>Entfernt:</b> ${removed.length?removed.map(esc).join(', '):'keine'}</p></div>`}
-function renderSettings(){const s=state.settings;$('#defaultStart').value=s.defaultStart;$('#defaultEnd').value=s.defaultEnd;$('#arrivalBuffer').value=s.arrivalBuffer;$('#departureBuffer').value=s.departureBuffer}
+function renderSettings(){const s=state.settings;$('#defaultStart').value=s.defaultStart;$('#defaultEnd').value=s.defaultEnd;$('#arrivalBuffer').value=s.arrivalBuffer;$('#departureBuffer').value=s.departureBuffer;$('#geocodeEndpoint').value=s.geocodeEndpoint||''}
 
 // ------------------------- Modals / editors -------------------------
 function newTripModal(){
-  showModal(`<h2>Neue Reise</h2><p class="lead">Lege das Reiseziel und einen ersten möglichen Zeitraum fest.</p><div class="formgrid one"><label>Name der Reise<input id="mTripTitle" placeholder="z. B. Japan 2028"></label><label>Reiseziel / Land<input id="mTripDest" placeholder="z. B. Japan"></label><label>Möglicher Zeitraum – von<input id="mWinStart" type="date"></label><label>bis<input id="mWinEnd" type="date"></label><label>Name der ersten Version<input id="mVersionName" value="Ausgangsplanung"></label></div><div class="actions"><button data-close-modal>Abbrechen</button><button class="primary" id="createTripConfirm">Reise anlegen</button></div>`,()=>{
-    $('#createTripConfirm').onclick=()=>{const title=$('#mTripTitle').value.trim(),dest=$('#mTripDest').value.trim(),a=$('#mWinStart').value,b=$('#mWinEnd').value;if(!title||!dest||!a||!b||b<a){toast('Bitte gültige Angaben eintragen.');return}const t={id:uid('trip'),title,destination:dest,country:dest,wishlist:[],interests:['Natur','Landschaft'],dateWindows:[{id:uid('win'),start:a,end:b}],versions:[],selectedVersionId:null};const v={id:uid('ver'),name:$('#mVersionName').value.trim()||'Ausgangsplanung',startDate:a,endDate:b,days:[],flights:[],connections:[],transfers:[],createdAt:Date.now()};const n=daysBetween(a,b);for(let i=0;i<n;i++)v.days.push({id:uid('day'),date:addDays(a,i),startTime:state.settings.defaultStart,endTime:state.settings.defaultEnd,stops:[]});t.versions.push(v);t.selectedVersionId=v.id;state.trips.push(t);state.activeTripId=t.id;persistSoon();closeModal();renderAll();toast('Reise angelegt.');};
+  const countries=[];
+  showModal(`<h2>Die nächste Reise beginnt hier</h2><div class="formgrid one"><label>Reisename<input id="mTripTitle" placeholder="z. B. Von Prag nach Venedig"></label></div>${countryEditorHtml()}<div class="formgrid"><label>Von<input id="mWinStart" type="date"></label><label>Bis<input id="mWinEnd" type="date"></label></div><p id="newTripError" class="form-error" role="alert"></p><div class="actions"><button data-close-modal>Abbrechen</button><button class="primary" id="createTripConfirm">Reise anlegen</button></div>`,()=>{
+    bindCountryEditor(countries);
+    $('#createTripConfirm').onclick=()=>{const title=$('#mTripTitle').value.trim(),a=$('#mWinStart').value,b=$('#mWinEnd').value,n=daysBetween(a,b);
+      const typed=$('#countryEntry').value.trim();if(typed){const c=Discovery.country(typed);if(c&&!countries.some(x=>x.code===c.code))countries.push(c);else if(!c){$('#newTripError').textContent='Bitte das eingegebene Land aus der Liste wählen.';return;}}
+      if(!title||!countries.length||!Number.isInteger(n)||n<1||n>366){$('#newTripError').textContent='Reisename, mindestens ein Land und einen Zeitraum von 1–366 Tagen wählen.';return;}
+      const trip={id:uid('trip'),title,countries,destination:countries.map(c=>c.name).join(' · '),country:countries[0].name,wishlist:[],interests:['Natur','Landschaft'],dateWindows:[{id:uid('win'),start:a,end:b}],versions:[],selectedVersionId:null};
+      const version={id:uid('ver'),name:'Meine Planung',startDate:a,endDate:b,days:Array.from({length:n},(_,i)=>({id:uid('day'),date:addDays(a,i),startTime:state.settings.defaultStart,endTime:state.settings.defaultEnd,stops:[]})),flights:[],connections:[],transfers:[],createdAt:Date.now()};
+      trip.versions.push(version);trip.selectedVersionId=version.id;state.trips.push(trip);state.activeTripId=trip.id;resetDiscoverySearch();persistSoon();closeModal();renderAll();switchView('discover');toast('Reise angelegt. Jetzt Wünsche sammeln.');
+    };
   });
 }
 function tripMenuModal(t){
-  showModal(`<h2>${esc(t.title)}</h2><p class="lead">Reise und Zeiträume verwalten.</p><div class="formgrid one"><label>Reisename<input id="mEditTripTitle" value="${esc(t.title)}"></label><label>Reiseziel / Land<input id="mEditTripDest" value="${esc(t.destination||'')}"></label></div><div class="sectiontitle" style="margin-top:14px">Mögliche Zeiträume</div><div id="windowList">${(t.dateWindows||[]).map(w=>`<div class="actions" style="margin-bottom:7px"><input type="date" data-win-start="${w.id}" value="${w.start}" style="flex:1"><input type="date" data-win-end="${w.id}" value="${w.end}" style="flex:1"><button class="danger" data-remove-window="${w.id}">×</button></div>`).join('')}</div><button id="addWindowBtn">+ Zeitraum</button><div class="actions"><button data-close-modal>Schließen</button><button id="saveTripMeta" class="primary">Speichern</button><button id="deleteTrip" class="danger">Reise löschen</button></div>`,()=>{
+  showModal(`<h2>${esc(t.title)}</h2><p class="lead">Reise und Zeiträume verwalten.</p><div class="formgrid one"><label>Reisename<input id="mEditTripTitle" value="${esc(t.title)}"></label><p class="tiny">${esc(countryLabel(t))}</p><button id="editTripCountriesFromMenu">Reiseländer ändern</button></div><div class="sectiontitle" style="margin-top:14px">Mögliche Zeiträume</div><div id="windowList">${(t.dateWindows||[]).map(w=>`<div class="actions" style="margin-bottom:7px"><input type="date" data-win-start="${w.id}" value="${w.start}" style="flex:1"><input type="date" data-win-end="${w.id}" value="${w.end}" style="flex:1"><button class="danger" data-remove-window="${w.id}">×</button></div>`).join('')}</div><button id="addWindowBtn">+ Zeitraum</button><div class="actions"><button data-close-modal>Schließen</button><button id="saveTripMeta" class="primary">Speichern</button><button id="deleteTrip" class="danger">Reise löschen</button></div>`,()=>{
+    $('#editTripCountriesFromMenu').onclick=()=>{closeModal();editTripCountries(t);};
     $('#addWindowBtn').onclick=()=>{t.dateWindows=t.dateWindows||[];t.dateWindows.push({id:uid('win'),start:activeVersion()?.startDate||'',end:activeVersion()?.endDate||''});persistSoon();closeModal();tripMenuModal(t)};
     $$('[data-remove-window]').forEach(b=>b.onclick=()=>{t.dateWindows=t.dateWindows.filter(w=>w.id!==b.dataset.removeWindow);persistSoon();closeModal();tripMenuModal(t)});
-    $('#saveTripMeta').onclick=()=>{t.title=$('#mEditTripTitle').value.trim()||t.title;t.destination=$('#mEditTripDest').value.trim()||t.destination;t.country=t.destination;for(const w of t.dateWindows){const a=$(`[data-win-start="${w.id}"]`),b=$(`[data-win-end="${w.id}"]`);if(a&&b){w.start=a.value;w.end=b.value}}persistSoon();closeModal();renderAll()};
+    $('#saveTripMeta').onclick=()=>{t.title=$('#mEditTripTitle').value.trim()||t.title;for(const w of t.dateWindows){const a=$(`[data-win-start="${w.id}"]`),b=$(`[data-win-end="${w.id}"]`);if(a&&b){w.start=a.value;w.end=b.value}}persistSoon();closeModal();renderAll()};
     $('#deleteTrip').onclick=()=>{if(!confirm(`Reise „${t.title}“ wirklich löschen?`))return;state.trips=state.trips.filter(x=>x.id!==t.id);state.activeTripId=state.trips[0]?.id||null;persistSoon();closeModal();renderAll()};
   });
 }
@@ -813,7 +958,7 @@ function addStopModal(dayId=null,prefill=null){
   const v=activeVersion();if(!v)return;const day=dayId?v.days.find(d=>d.id===dayId):v.days[0];
   showModal(`<h2>Stopp hinzufügen</h2><p class="lead">Suche einen Ort oder trage Koordinaten manuell ein.</p><div class="formgrid one"><label>Ort / Sehenswürdigkeit<input id="mSearchPlace" value="${esc(prefill?.name||'')}"></label></div><div class="actions"><button id="searchPlaceBtn" class="primary">Suchen</button><button id="manualStopBtn">Manuell</button><button data-close-modal>Abbrechen</button></div><div id="placeResults" class="searchresults"></div>`,()=>{
     $('#searchPlaceBtn').onclick=async()=>{const q=$('#mSearchPlace').value.trim();if(!q)return;const box=$('#placeResults');box.innerHTML='<div class="searchitem">Suche …</div>';try{const r=await Providers.geocode(q);box.innerHTML=r.map((x,i)=>`<div class="searchitem"><b>${esc(x.name)}</b><p>${esc(x.display)}</p><button data-pick-place="${i}">Auswählen</button></div>`).join('')||'<div class="searchitem">Nichts gefunden.</div>';$$('[data-pick-place]').forEach(b=>b.onclick=()=>{const x=r[+b.dataset.pickPlace];closeModal();editStopModal(day,{id:uid('stop'),name:x.name,lat:x.lat,lng:x.lng,type:guessStopType(x),priority:'normal',durationMin:60,durationWish:90,notes:'',openingHours:x.extratags?.opening_hours||'',fixedStart:'',images:[],tags:[],wildlife:[],modeToNext:'car',routeToNext:null},true)});}catch(e){box.innerHTML=`<div class="warnline errorline">${esc(e.message)}</div>`}};
-    $('#manualStopBtn').onclick=()=>{closeModal();editStopModal(day,{id:uid('stop'),name:$('#mSearchPlace')?.value||'',lat:null,lng:null,type:'other',priority:'normal',durationMin:60,durationWish:60,notes:'',openingHours:'',fixedStart:'',images:[],tags:[],wildlife:[],modeToNext:'car',routeToNext:null},true)};
+    $('#manualStopBtn').onclick=()=>{const name=$('#mSearchPlace')?.value||'';closeModal();editStopModal(day,{id:uid('stop'),name,lat:null,lng:null,type:'other',priority:'normal',durationMin:60,durationWish:60,notes:'',openingHours:'',fixedStart:'',images:[],tags:[],wildlife:[],modeToNext:'car',routeToNext:null},true)};
   });
 }
 function guessStopType(x){const t=`${x.category||''} ${x.type||''}`;if(/hotel|hostel|motel/.test(t))return'hotel';if(/park|nature|forest/.test(t))return'nature';if(/viewpoint/.test(t))return'viewpoint';if(/beach/.test(t))return'beach';if(/restaurant|cafe/.test(t))return'food';if(/city|town/.test(t))return'city';return'sight'}
@@ -844,21 +989,22 @@ async function discoverAll(){
     toast(ok===3?'Inspiration erfolgreich geladen.':ok>0?`${ok} von 3 Bereichen wurden geladen.`:'Inspiration konnte nicht geladen werden.');
   }finally{btn.classList.remove('loading');btn.disabled=false;btn.textContent=old}
 }
-async function loadCities(force=false){
-  const t=activeTrip();if(!t)return false;const box=$('#citySuggestions');box.className='suggestions scrollsuggestions';box.innerHTML='<div class="suggestion">Städte werden geladen …</div>';
-  if(force===true)delete state.cache.cities[`cities:v6:${normalizeName(t.country||t.destination)}`];
-  try{const data=await Providers.cities(t.country||t.destination);if(activeTrip()?.id===t.id)renderCitySuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Städte:</b> ${esc(e.message)}</div>`;return false}
+async function loadInspiration(kind,force=false) {
+  const trip=activeTrip(),version=activeVersion(),country=discoveryCountry();if(!trip||!country)return false;
+  const token=trip.id+'|'+country.name,month=Number(version?.startDate?.slice(5,7))||0;
+  const spec={cities:{id:'citySuggestions',cache:'cities',key:`cities:v6:${normalizeName(country.name)}`,method:'cities',render:renderCitySuggestions},attractions:{id:'poiSuggestions',cache:'wikidata',key:`attr:v6:${normalizeName(country.name)}`,method:'attractions',render:renderAttractionSuggestions},wildlife:{id:'wildSuggestions',cache:'wildlife',key:`wild:v3:${normalizeName(country.name)}:${month}`,method:'wildlife',render:renderWildlifeSuggestions}}[kind];
+  const current=()=>activeTrip()?.id+'|'+discoveryCountry()?.name===token&&(kind!=='wildlife'||activeVersion()?.id===version?.id);
+  const box=$('#'+spec.id);box.className='suggestions';box.innerHTML='<div class="empty">Vorschläge werden geladen …</div>';
+  if(force)delete state.cache[spec.cache][spec.key];
+  try {
+    const data=await Providers[spec.method](country.name,month);
+    for(const item of data){item.country=country.name;item.countryCode=country.code;}
+    persistSoon();if(current())spec.render(data);return true;
+  } catch(error){if(current())box.innerHTML=`<div class="empty"><b>Gerade keine Vorschläge verfügbar</b><p>${esc(error.message)}</p><button data-focus-search>Stattdessen selbst suchen</button></div>`;return false;}
 }
-async function loadAttractions(force=false){
-  const t=activeTrip();if(!t)return false;const box=$('#poiSuggestions');box.className='suggestions';box.innerHTML='<div class="suggestion">Sehenswürdigkeiten werden geladen …</div>';
-  if(force===true)delete state.cache.wikidata[`attr:v6:${normalizeName(t.country||t.destination)}`];
-  try{const data=await Providers.attractions(t.country||t.destination);if(activeTrip()?.id===t.id)renderAttractionSuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Sehenswürdigkeiten:</b> ${esc(e.message)}</div>`;return false}
-}
-async function loadWildlife(force=false){
-  const t=activeTrip(),v=activeVersion();if(!t)return false;const box=$('#wildSuggestions');box.className='suggestions';box.innerHTML='<div class="suggestion">Wildlife wird geladen …</div>';const month=v?.startDate?new Date(`${v.startDate}T12:00:00`).getMonth()+1:0;
-  if(force===true)delete state.cache.wildlife[`wild:v3:${normalizeName(t.destination)}:${month}`];
-  try{const data=await Providers.wildlife(t.destination,month);if(activeTrip()?.id===t.id&&activeVersion()?.id===v.id)renderWildlifeSuggestions(data);return true;}catch(e){box.innerHTML=`<div class="warnline errorline"><b>Wildlife:</b> ${esc(e.message)}</div>`;return false}
-}
+async function loadCities(force=false){return loadInspiration('cities',force);}
+async function loadAttractions(force=false){return loadInspiration('attractions',force);}
+async function loadWildlife(force=false){return loadInspiration('wildlife',force);}
 function addSuggestion(payload){const v=activeVersion();if(!v)return;if(payload.kind==='poi'){const day=v.days[0];const stop={id:uid('stop'),name:payload.name,lat:payload.lat,lng:payload.lng,type:'sight',priority:'high',durationMin:45,durationWish:90,notes:'Automatisch vorgeschlagenes Highlight',openingHours:'',fixedStart:'',images:[],tags:['highlight'],wildlife:[],modeToNext:'car',routeToNext:null};closeModal();editStopModal(day,stop,true)}}
 function chooseTargetSpecies(x){
   const t=activeTrip();t.targetSpecies=t.targetSpecies||[];if(!t.targetSpecies.some(y=>y.taxonId===x.taxonId))t.targetSpecies.push(x);persistSoon();
@@ -876,6 +1022,7 @@ function addCitySuggestion(city){
   const v=activeVersion();if(!v)return;const day=v.days[0],s={id:uid('stop'),name:city.name,lat:+city.lat,lng:+city.lng,type:'city',priority:'high',durationMin:30,durationWish:30,notes:'Stadt als Basis aus den Reise-Inspirationen hinzugefügt.',openingHours:'',fixedStart:'',images:[],tags:['city-base'],wildlife:[],modeToNext:'walk',routeToNext:null};editStopModal(day,s,true);
 }
 async function openSuggestionDetail(kind,item,context=''){
+  context=item.country||context||discoveryCountry()?.name||'';
   const icon=kind==='wildlife'?'🐾':kind==='city'?'🏙':'★';
   showModal(`<div class="detailtitle"><span class="detailtype">${icon} ${kind==='wildlife'?'Wildlife':kind==='city'?'Stadt':'Sehenswürdigkeit'}</span><h2>${esc(item.name||item.title||'Details')}</h2><p class="lead">Verifizierte Kurzinfo und Bilder werden geladen …</p></div><div id="detailBody"></div><div class="actions detailactions"><button data-close-modal>Schließen</button></div>`);
   const generation=modalGeneration,body=$('#detailBody'),actions=$('#modalContent .detailactions');
@@ -1130,26 +1277,27 @@ window.AppUpdater={
 };
 
 // ------------------------- Events -------------------------
-function switchView(name){currentView=name;$$('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));$$('.bottomnav button').forEach(b=>b.classList.toggle('active',b.dataset.view===name));if(name==='map')setTimeout(renderMap,20)}
+function switchView(name){if(name!==currentView&&typeof window.scrollTo==='function')window.scrollTo(0,0);currentView=name;$$('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));$$('.bottomnav button').forEach(b=>b.classList.toggle('active',b.dataset.view===name));if(name==='discover'){renderDiscover();renderSearchResults();}if(name==='wishlist')renderWishlistSummary();if(name==='map')setTimeout(renderMap,20)}
 function locateStop(id){const v=activeVersion();if(!v)return null;for(const d of v.days){const s=d.stops.find(x=>x.id===id);if(s)return{day:d,stop:s}}return null}
 function bindEvents(){
-  document.addEventListener('error',event=>{const img=event.target;if(img?.tagName==='IMG'){const fallback=document.createElement('span');fallback.className='imagefallback';fallback.textContent='Bild nicht verfügbar';img.replaceWith(fallback);}},true);
+  bindDiscoveryEvents();
+  document.addEventListener('error',event=>{const img=event.target;if(img?.tagName==='IMG'){const fallback=document.createElement('span');fallback.className=img.className+' imagefallback';fallback.textContent='Bild nicht verfügbar';img.replaceWith(fallback);}},true);
   $$('.bottomnav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
-  $('#tripSelect').onchange=e=>{state.activeTripId=e.target.value;ensureActive();discoverVisible.cities=discoverVisible.attractions=discoverVisible.wildlife=5;mapDayVisible.clear();persistSoon();renderAll()};
+  $('#tripSelect').onchange=e=>{state.activeTripId=e.target.value;resetDiscoverySearch();ensureActive();discoverVisible.cities=discoverVisible.attractions=discoverVisible.wildlife=5;mapDayVisible.clear();persistSoon();renderAll()};
   $('#versionSelect').onchange=e=>{const t=activeTrip();if(t)t.selectedVersionId=e.target.value;mapDayVisible.clear();persistSoon();renderAll()};
   $('#newTripBtn').onclick=newTripModal; $('#refreshBtn').onclick=refreshAllRoutes; $('#discoverBtn').onclick=discoverAll;$('#reloadCitiesBtn').onclick=()=>loadCities(true);$('#reloadPoiBtn').onclick=()=>loadAttractions(true);$('#reloadWildBtn').onclick=()=>loadWildlife(true);$('#autoRouteBtn').onclick=autoRouteModal;$('#clearWishlistBtn').onclick=()=>{const t=activeTrip();if(t?.wishlist?.length&&confirm('Gesamte Auswahl für die Routenplanung leeren?')){t.wishlist=[];persistSoon();renderDiscover()}};$('#addStopBtn').onclick=()=>addStopModal();$('#addConnectionBtn').onclick=()=>connectionModal();$('#addAccommodationBtn').onclick=()=>accommodationModal();$('#addTransferBtn').onclick=()=>transferModal();$('#fitMapBtn').onclick=fitMap;$('#mapFilterBtn').onclick=mapFilterModal;
   $('#compareA').onchange=renderCompareResult;$('#compareB').onchange=renderCompareResult;
-  $('#saveSettingsBtn').onclick=()=>{state.settings={defaultStart:$('#defaultStart').value||'08:00',defaultEnd:$('#defaultEnd').value||'20:00',arrivalBuffer:+$('#arrivalBuffer').value||0,departureBuffer:+$('#departureBuffer').value||0};persistSoon();toast('Einstellungen gespeichert.')};
+  $('#saveSettingsBtn').onclick=()=>{try{const a=$('#defaultStart').value,b=$('#defaultEnd').value;if(Planner.minutes(a)===null||Planner.minutes(b)===null||Planner.minutes(b)<=Planner.minutes(a))throw new Error('Gültigen Tagesstart und ein späteres Tagesende wählen.');const geocodeEndpoint=Discovery.searchEndpoint($('#geocodeEndpoint').value);state.settings={...state.settings,geocodeEndpoint,defaultStart:a,defaultEnd:b,arrivalBuffer:Math.max(0,+$('#arrivalBuffer').value||0),departureBuffer:Math.max(0,+$('#departureBuffer').value||0)};persistSoon();toast('Einstellungen gespeichert.');}catch(error){toast(error.message);}};
   $('#checkUpdateBtn').onclick=()=>checkForUpdates({silent:false}); $('#installUpdateBtn').onclick=installAvailableUpdate;
   $('#exportBtn').onclick=()=>{const t=activeTrip();const name=`Unser_Reiseplaner_${(t?.title||'Backup').replace(/[^a-zA-Z0-9äöüÄÖÜß_-]+/g,'_')}.json`;const raw=JSON.stringify(state,null,2);if(window.AndroidBridge?.exportBackup){const msg=AndroidBridge.exportBackup(raw,name);toast(msg)}else{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([raw],{type:'application/json'}));a.download=name;a.click();URL.revokeObjectURL(a.href)}};
   $('#importFile').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const x=normalizeLoadedState(JSON.parse(r.result));if(confirm('Aktuelle lokale Daten durch dieses Backup ersetzen?')){state=x;state.settings={...defaultSettings(),...(state.settings||{})};persistSoon();renderAll();toast('Backup importiert.')}}catch(err){toast('Backup konnte nicht gelesen werden.')}};r.readAsText(f)};
   $('#modal').addEventListener('click',e=>{if(e.target.dataset.close==='1'||e.target.hasAttribute('data-close-modal'))closeModal()});
   document.addEventListener('click',e=>{
     const d=(e.target.closest('button')||e.target).dataset;
-    if(d.openTrip){state.activeTripId=d.openTrip;persistSoon();renderAll();switchView('plan')}
+    if(d.openTrip){state.activeTripId=d.openTrip;resetDiscoverySearch();persistSoon();renderAll();switchView('plan')}
     if(d.tripMenu){const t=state.trips.find(x=>x.id===d.tripMenu);if(t)tripMenuModal(t)}
     if(d.newVersion){const t=state.trips.find(x=>x.id===d.newVersion);state.activeTripId=t.id;const v=t.versions.find(x=>x.id===t.selectedVersionId)||t.versions[0],n=prompt('Name der neuen Version:',`${v.name} – Variante`);if(n){const c=cloneVersion(v,n);t.versions.push(c);t.selectedVersionId=c.id;persistSoon();renderAll()}}
-    if(d.dayToggle){const day=activeVersion()?.days.find(x=>x.id===d.dayToggle),body=$(`#body_${d.dayToggle}`);if(day&&body){day.collapsed=!day.collapsed;body.hidden=day.collapsed;persistSoon();}}
+    if(d.dayToggle){const day=activeVersion()?.days.find(x=>x.id===d.dayToggle),body=$(`#body_${d.dayToggle}`);if(day&&body){day.collapsed=!day.collapsed;body.hidden=day.collapsed;e.target.closest('button')?.setAttribute('aria-expanded',String(!day.collapsed));persistSoon();}}
     if(d.dayTime){const day=activeVersion()?.days.find(x=>x.id===d.dayTime);if(day)dayTimeModal(day)}
     if(d.dayAdd)addStopModal(d.dayAdd);
     if(d.dayAccommodation)accommodationModal(d.dayAccommodation);

@@ -1,45 +1,30 @@
-# Unser Reiseplaner – Version 1.3.1
+# Unser Reiseplaner – Version 1.4.0
 
-Vollständiges Android-Quellcodeprojekt auf Basis von Version 1.2.0. Schwerpunkt: aus Prioritäten eine zeitlich nachvollziehbare Route erzeugen und bekannte Fehler ohne Verlust der vorhandenen Funktionen beheben.
+Android-App für individuelle Reisen mit Prioritäten, Natur- und Fotomotiven. Grundlage ist der geprüfte GitHub-Stand 1.3.1 (`646f92b607ecc81b3cbc640878367c55cb485121`).
 
-Version 1.3.1 behebt den GitHub-Buildabbruch `sdkmanager: command not found`, modernisiert die native Zurück-Navigation und unterstützt das Update vom bereits hochgeladenen Quellstand 1.3.0. Alle nachstehenden Funktionsverbesserungen aus 1.3.0 sind enthalten.
+## Bedienung
 
-## Was sich ändert
+**Reisen → Entdecken → Wünsche → Plan → Karte.** Einstellungen, Datensicherung und App-Updates erreichst du über das Zahnrad oben rechts.
 
-- Wunschliste mit Muss/Hoch/Mittel/Optional sowie Aufenthaltstagen und Besuchsdauer je Ziel. Städte, nationale Highlights und Wildlife bleiben getrennt. Highlights umfassen Naturziele, Wahrzeichen, Welterbe und historische Stätten.
-- Neuer Routenkern plant Aufenthalte, Fahrten, Pausen, Transfers und Übernachtungen gemeinsam. Start- und Endziel, Auto/Mietwagen/Camper und maximale tägliche Fahrzeit sind einstellbar.
-- Lange Autofahrten können über mehrere Tage verteilt werden. Flüge für große Entfernungen lassen sich abschalten. Es werden keine Zugverbindungen allein aus einer Entfernung abgeleitet.
-- Nicht passende Wünsche bleiben mit Begründung sichtbar; ausgelassene Muss-Ziele werden hervorgehoben. Zusätzliche freie Tage bleiben als solche erkennbar.
-- Unterkunftsbausteine decken die Nächte ab. Fortlaufende Nächte am selben Ort teilen einen Baustein. Konkrete Hotels, Adressen und Buchungsdaten bleiben ergänzbar.
-- Fehler bei Wildlife-Koordinaten 0,0, falschen Tagesblockierungen und positiven Puffern trotz Zeitkonflikt sind behoben.
-- Datenquellen verwenden geprüfte Gebiete und IDs. Wildlife-Hotspots stammen aus echten öffentlichen Beobachtungsorten. Nicht belastbare Bilder/Inhalte werden nicht willkürlich ersetzt.
-- Abbrechen verwirft Dialogentwürfe. Geschätzte Zeiten müssen ausdrücklich geprüft werden. „Keine“ im Kartenfilter bleibt leer; eingeklappte Tage bleiben eingeklappt.
+Lege eine Reise mit einem oder mehreren Ländern und einem Zeitraum an. Suche gezielt nach einem Ort, einer Sehenswürdigkeit oder Tierart. Suchgebiet: alle Reiseländer, einzelnes Land oder weltweit. Speichere Treffer über Plus in der Wunschliste. Fehlt dein Wunsch, nutze „Eigener Ort“. Koordinaten dürfen zunächst offen bleiben.
 
-Bestehende Reiseversionen, manuelle Verbindungen/Flüge, Stadttouren, Karten, SQLite-Speicherung, Backups, Vergleich und In-App-Updater bleiben erhalten. Der automatische Entwurf ist eine neue Version; bestehende Buchungen werden nicht automatisch in ihn übernommen.
+Unter „Priorität, Zeit & Foto“ legst du fest, was wichtig ist, wie lange du bleiben möchtest und welche Fotomotive du planst. Ein selbst eingegebenes Aufnahmefenster begrenzt die gesamte Besuchszeit; es ist keine berechnete Goldene Stunde. Aufnahmehinweise bleiben am Wunsch und am erzeugten Stopp erhalten.
 
-## Prüfen und bauen
+Die Route entsteht als neue Variante. Wähle geografische Reihenfolge oder die Reihenfolge deiner Wunschliste sowie Fahr- und Aktivitätenbudget. Nicht passende Wünsche bleiben mit Gründen sichtbar. Prüfe anschließend die konkreten Verbindungen, Unterkünfte und offenen Angaben. Bestehende Buchungen werden in der neuen automatischen Variante nicht übernommen.
 
-Ohne zusätzliche JavaScript-Pakete, mit Node.js ab Version 22:
+## Bauen und installieren
 
-```bash
-bash tools/verify.sh
-```
+- Smartphone/Termux: `UPDATE_1_4_0_TERMUX.md`.
+- Android Studio: `INSTALLATION_ANDROID_STUDIO.md`.
+- Lokale Struktur- und Funktionstests: `bash tools/verify.sh`.
+- Android-Build und Lint: `bash tools/verify.sh --android` (JDK 21 und Android-SDK erforderlich).
+- Prüfnachweise und Einschränkungen: `PRUEFBERICHT_1_4_0.md`.
+- Marktvergleich, Fotografie-Positionierung und Roadmap: `docs/MARKTRECHERCHE_1_4_0.md`.
 
-Mit Android SDK 36 / Build Tools 36.0.0 und JDK 21:
+## Technische Grundlage
 
-```bash
-bash tools/verify.sh --android
-```
+Native Android-Hülle mit WebView und SQLite, statische HTML/CSS/JavaScript-Oberfläche. Keine Anmeldung in der Reise-App nötig. Geodaten von OpenStreetMap/Nominatim/Overpass, Straßenrouten von OSRM, Ortsinformationen und Bilder von Wikimedia, Tierarten und historische Beobachtungen von iNaturalist. Jeder Dienst hat eigene Verfügbarkeit, Nutzungsbedingungen und Abdeckung. Suchbegriffe und benötigte Koordinaten werden zur jeweiligen Abfrage an den Dienst gesendet.
 
-Alternativ den entpackten Projektordner in Android Studio öffnen. `INSTALLATION_ANDROID_STUDIO.md` beschreibt den Build. `UPDATE_1_3_1_TERMUX.md` beschreibt den vollständigen Smartphone-Weg.
+Für den privaten Bestand bleibt der bisherige Nominatim-Dienst vorkonfiguriert. Vor breiter Verteilung ist ein gemeinsam begrenzter Suchproxy oder eigener/vertraglicher Suchdienst erforderlich. Ein Nominatim-kompatibler HTTPS-Endpunkt ist in Einstellungen ohne neue APK umstellbar. Offline bleiben gespeicherte Reiseinformationen verfügbar; externe Karten, Fotos und neue Abfragen benötigen Verbindung.
 
-## Inhalt und Prüfstatus
-
-- `CHANGELOG.md`: neue Änderungen und rekonstruierte Versionshistorie.
-- `PROJEKTKONTEXT.md` / `QUELLSTAND.json`: verbindliche Anforderungen und Ausgangspakete.
-- `DATENQUELLEN.md`: Zuordnung, Schätzungen und Grenzen der Anbieter.
-- `PRUEFBERICHT_1_3_1.md`: durchgeführte Tests und noch offene Prüfungen.
-- `tests/`: Regressionen und Datenquellenverträge; `tools/`: Prüfung und Smartphone-Update.
-- Native App, Ressourcen, Web-Oberfläche, Gradle-Wrapper und beide GitHub-Workflows sind vollständig enthalten.
-
-Debug- und Release-Build, beide Lint-Prüfungen und 31 Funktionstests wurden im [GitHub-Lauf 34500418773](https://github.com/wasserratte96-web/unser-reiseplaner/actions/runs/34500418773) erfolgreich geprüft. Der Nachweis steht in `PRUEFBERICHT_1_3_1.md`. Für das Update über eine vorhandene Installation die signierte APK des Release-Workflows verwenden. Die Geräteprüfung auf Pixel 6 Pro / Android 17 bleibt erforderlich.
+Versionen, Tagesplanung, Kartenfilter, Stadtführungen, Verbindungen, Unterkünfte, Transfers, Backups und der signierte GitHub-Updateweg aus 1.3.1 sind enthalten. Die App ersetzt keine Buchungsbestätigung oder Navigationsfreigabe für ein bestimmtes Fahrzeug.

@@ -41,10 +41,11 @@
   function order(nodes,options={}) {
     if (!nodes.length) return [];
     let remaining=[...nodes];
-    const start=remaining.find(n=>n.key===options.startKey)||[...remaining].sort((a,b)=>(weights[b.priority]||0)-(weights[a.priority]||0)||a.key.localeCompare(b.key))[0];
+    const start=remaining.find(n=>n.key===options.startKey)||(options.orderMode==='wishlist'?remaining[0]:[...remaining].sort((a,b)=>(weights[b.priority]||0)-(weights[a.priority]||0)||a.key.localeCompare(b.key))[0]);
     const result=[start];remaining=remaining.filter(n=>n!==start);
     const end=remaining.find(n=>n.key===options.endKey);
     if(end)remaining=remaining.filter(n=>n!==end);
+    if(options.orderMode==='wishlist'){result.push(...remaining);if(end)result.push(end);return result;}
     while(remaining.length) {
       const last=result[result.length-1];
       remaining.sort((a,b)=>distance(last,a)-distance(last,b)||a.key.localeCompare(b.key));
@@ -65,7 +66,7 @@
     const arrival=minutes(options.arrivalTime||'10:00'),departure=minutes(options.departureTime||'18:00');
     if(arrival===null||departure===null)throw new Error('Ankunfts- und Abfahrtszeit fehlen.');
     const maxDrive=Math.max(60,Math.min(600,Number(options.maxDriveMin)||360));
-    const days=Array.from({length:count},(_,i)=>({date:addDays(options.startDate,i),events:[],location:null,drivingMin:0}));
+    const days=Array.from({length:count},(_,i)=>({date:addDays(options.startDate,i),events:[],location:null,drivingMin:0,visitMin:0}));
     // Arrival/departure include 30 minutes terminal buffer and 55 minutes transfer.
     const windowStart=i=>Math.max(start,i===0?arrival+85:start);
     const windowEnd=i=>Math.min(end,i===count-1?departure-85:end)-(i<count-1?20:0)-30;
@@ -78,7 +79,8 @@
     let previous=null,flightArrivalDay=-1;
     for(const node of nodes) {
       if(previous) {
-        const leg=estimateLeg(previous,node,options);
+        const ac=previous.countryCode||previous.item?.countryCode,bc=node.countryCode||node.item?.countryCode;
+        const leg={...estimateLeg(previous,node,options),fromCountry:previous.country||previous.item?.country||'',toCountry:node.country||node.item?.country||'',countryChange:!!(ac&&bc&&ac!==bc)};
         if(!Number.isFinite(leg.durationMin)||leg.durationMin<0) return fail('Keine belastbare Verbindungsdauer verfügbar');
         if(leg.unreachable)return fail('Keine befahrbare Straßenroute; Fähre oder andere Verbindung ergänzen');
         if(leg.mode==='flight') {
@@ -111,10 +113,16 @@
         }
       }
       const stay=Math.max(1,Math.min(30,Math.floor(Number(node.stayDays)||1))),visit=duration(node);
+      const visitLimit=Number(options.maxVisitMin)||Infinity;
+      if(visit>visitLimit)return fail('Gewünschter Aufenthalt ist länger als das gewählte tägliche Aktivitätenbudget');
+      const photo=node.photography||{},hasWindow=!!(photo.windowStart||photo.windowEnd);
+      const photoStart=hasWindow?minutes(photo.windowStart):0,photoEnd=hasWindow?minutes(photo.windowEnd):1440;
+      if(hasWindow&&(photoStart===null||photoEnd===null||photoEnd<=photoStart||visit>photoEnd-photoStart))return fail('Aufenthalt passt nicht in das festgelegte Fotozeitfenster');
       for(let i=0;i<stay;i++) {
         if(i>0&&!nextDay())return fail('Gewünschte Aufenthaltsdauer überschreitet den Zeitraum');
-        while(cursor+visit>windowEnd(di))if(!nextDay())return fail('Aufenthalt und Verbindungen passen nicht in die verfügbaren Tage');
-        days[di].events.push({type:'activity',node,start:cursor,end:cursor+visit,part:i+1});cursor+=visit;location=node;
+        while(Math.max(cursor,photoStart)+visit>Math.min(windowEnd(di),photoEnd)||days[di].visitMin+visit>visitLimit)if(!nextDay())return fail(hasWindow?'Fotozeitfenster, Anreise und Tagesbudget passen nicht zusammen':'Aufenthalt und Verbindungen passen nicht in die verfügbaren Tage');
+        cursor=Math.max(cursor,photoStart);
+        days[di].events.push({type:'activity',node,start:cursor,end:cursor+visit,part:i+1});cursor+=visit;days[di].visitMin+=visit;location=node;
       }
       previous=node;
     }
@@ -128,8 +136,9 @@
     const ranked=[...valid].sort((a,b)=>Number(b.key===options.startKey||b.key===options.endKey)-Number(a.key===options.startKey||a.key===options.endKey)||(weights[b.priority]||0)-(weights[a.priority]||0)||a.key.localeCompare(b.key));
     for(const node of ranked) {
       if(node.priority==='optional'&&options.includeOptional===false) {deferred.push({...node,reason:'Optionale Ziele deaktiviert'});continue;}
-      const attempt=schedule(order([...selected,node],options),options);
-      if(attempt.fits)selected.push(node);else deferred.push({...node,reason:attempt.reason});
+      const candidates=options.orderMode==='wishlist'?nodes.filter(n=>selected.includes(n)||n===node):[...selected,node];
+      const attempt=schedule(order(candidates,options),options);
+      if(attempt.fits)selected=candidates;else deferred.push({...node,reason:attempt.reason});
     }
     const result=schedule(order(selected,options),options);
     return {...result,deferred,includedKeys:selected.map(n=>n.key),missingMust:deferred.filter(n=>n.priority==='must')};
