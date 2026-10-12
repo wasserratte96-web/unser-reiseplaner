@@ -14,7 +14,7 @@ test('country migration preserves old trips and deduplicates localized multi-cou
   assert.deepEqual(Discovery.countriesForTrip({countries:['DE','Germany','Österreich']}),[{code:'DE',name:'Deutschland'},{code:'AT',name:'Österreich'}]);
   assert.deepEqual(Discovery.validCountryCodes(['DE','de','AT','bogus']),['at','de']);
   const {app}=setup(),raw={schema:6,trips:[{id:'old',country:'Australien',wishlist:[],versions:[]}]};
-  const before=JSON.stringify(raw),out=app.normalizeLoadedState(raw);assert.equal(out.schema,7);assert.equal(out.trips[0].countries[0].code,'AU');assert.equal(JSON.stringify(raw),before);
+  const before=JSON.stringify(raw),out=app.normalizeLoadedState(raw);assert.equal(out.schema,8);assert.equal(out.trips[0].countries[0].code,'AU');assert.equal(JSON.stringify(raw),before);
 });
 test('own places retain missing locations, reject incomplete coordinates and accept the equator',()=>{
   const input={name:'Mein Motiv',durationMin:60,kind:'highlight',countryCode:'DE'};

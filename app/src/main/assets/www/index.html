@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/app.css">
   <link rel="stylesheet" href="css/redesign.css">
+  <link rel="stylesheet" href="css/journey.css">
 </head>
 <body>
   <div id="app">
@@ -17,13 +18,20 @@
         <div><div class="brand">Unser Reiseplaner</div><div id="syncState" class="tiny">lokal gespeichert</div></div>
         <button class="iconbtn" id="settingsNavBtn" aria-label="Mehr und Einstellungen">⚙</button>
       </div>
-      <div class="contextrow">
+      <div class="contextrow" id="contextRow">
         <select id="tripSelect" aria-label="Reise"></select>
-        <select id="versionSelect" aria-label="Version"></select>
+        <details class="variant-picker"><summary>Variante</summary><select id="versionSelect" aria-label="Version"></select></details>
       </div>
     </header>
 
+    <nav id="tripWorkspace" class="trip-workspace" hidden aria-label="Diese Reise"><button data-workspace="wishlist">Wünsche</button><button data-workspace="plan">Tagesplan</button><button data-workspace="map">Karte</button><button data-workspace="discover">+ Entdecken</button></nav>
     <main>
+      <section class="view" id="view-find">
+        <div class="pagehead"><div><p class="step-label">Ideen für deine nächste Reise</p><h1>Was möchtest du erleben?</h1><p>Finde passende Jahreszeiten und Regionen.</p></div></div>
+        <div class="year-controls"><label>Ich kenne …<select id="yearKind"><option value="time">meinen Reisezeitraum</option><option value="goals">meine Wunschziele</option></select></label><label id="yearMonthLabel">Reisemonat<select id="yearMonth"><option value="1">Januar</option><option value="2">Februar</option><option value="3">März</option><option value="4">April</option><option value="5">Mai</option><option value="6">Juni</option><option value="7">Juli</option><option value="8">August</option><option value="9">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Dezember</option></select></label><label>Verfügbare Tage<input id="yearDays" type="number" min="1" max="366" value="14"></label><label>Interesse<select id="yearInterest"><option value="all">Alles</option><option value="wildlife">Wildlife</option><option value="nature">Natur</option><option value="city">Städte</option><option value="photo">Fotografie</option></select></label><label class="year-query">Ort, Tier oder Motiv<input id="yearQuery" type="search" placeholder="Fitz Roy, Pinguine, Street …"></label><label class="checkline"><input id="yearPublic" type="checkbox">Nur ÖPNV und Fußwege</label><button id="yearSearch" class="primary">Passende Ideen zeigen</button></div>
+        <div id="seasonComparison" hidden></div><div id="yearResults" class="year-results" aria-live="polite"></div>
+        <p class="tiny">Startsammlung mit 20 Regionsprofilen. Saisonorientierung statt Wetter- oder Sichtungsprognose; unbekannte Zugänge bleiben erkennbar.</p><button id="newTripFromFind">Eigene Reise anlegen</button>
+      </section>
       <section class="view active" id="view-trips">
         <div class="pagehead"><div><h1>Deine Reisen</h1><p>Aus Vorfreude wird ein Plan.</p></div><button class="primary" id="newTripBtn">+ Reise</button></div>
         <div id="tripCards" class="cardstack"></div>
@@ -57,8 +65,8 @@
       </section>
 
       <section class="view" id="view-plan">
-        <div class="pagehead"><div><h1>Dein Reiseplan</h1><p>Jeder Tag hat seinen Platz.</p></div><div class="actions plannertopactions"><button id="addConnectionBtn">🧭 Verbindung</button><button id="addAccommodationBtn">🛏 Unterkunft</button><button id="addTransferBtn">↔ Transfer</button><button class="primary" id="addStopBtn">+ Stopp</button></div></div>
-        <div class="plan-secondary-actions"><button id="manageVersionsBtn">Varianten</button><button id="compareVersionsBtn">Vergleichen</button><button id="refreshBtn" title="Strecken aktualisieren">↻ Strecken</button><button id="toggleAllDays">Tage einklappen</button></div>
+        <div class="pagehead"><div><h1>Dein Reiseplan</h1><p>Jeder Tag hat seinen Platz.</p></div><details class="plan-add-menu"><summary>+ Hinzufügen</summary><div class="actions plannertopactions"><button id="addConnectionBtn">🧭 Verbindung</button><button id="addAccommodationBtn">🛏 Unterkunft</button><button id="addTransferBtn">↔ Transfer</button><button class="primary" id="addStopBtn">+ Stopp</button></div></details></div>
+        <details class="plan-more"><summary>Weitere Planoptionen</summary><div class="plan-secondary-actions"><button id="manageVersionsBtn">Varianten</button><button id="compareVersionsBtn">Vergleichen</button><button id="refreshBtn" title="Strecken aktualisieren">↻ Strecken</button><button id="toggleAllDays">Tage einklappen</button></div></details>
         <div id="planSummary" class="summarystrip"></div>
         <div id="daysTimeline" class="timeline"></div>
       </section>
@@ -98,21 +106,18 @@
       </section>
     </main>
 
-    <nav class="bottomnav" aria-label="Hauptnavigation">
-      <button data-view="trips" class="active"><span>▣</span><small>Reisen</small></button>
-      <button data-view="discover"><span>⌕</span><small>Entdecken</small></button>
-      <button data-view="wishlist"><span>♡</span><small>Wünsche</small></button>
-      <button data-view="plan"><span>☷</span><small>Plan</small></button>
-      <button data-view="map"><span>⌖</span><small>Karte</small></button>
-    </nav>
+    <nav class="bottomnav" aria-label="Hauptnavigation"><button data-view="find"><span>⌕</span><small>Reise finden</small></button><button data-view="trips" class="active"><span>▤</span><small>Meine Reisen</small></button></nav>
   </div>
 
   <div id="modal" class="modal hidden"><div class="modalbackdrop" data-close="1"></div><div class="sheet"><div class="sheethandle"></div><div id="modalContent" role="dialog" aria-modal="true" aria-label="Reisedetails"></div></div></div>
+  <button id="undoChange" class="undo-change" hidden>Letzte Änderung rückgängig</button>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/planner-core.js"></script>
   <script src="js/discovery-core.js"></script>
+  <script src="js/journey-core.js"></script>
+  <script src="js/travel-catalog.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
