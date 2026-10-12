@@ -17,9 +17,10 @@ module.exports = function loadApp(project = path.resolve(__dirname, '..')) {
   if(fs.existsSync(core))vm.runInContext(fs.readFileSync(core,'utf8'),context);
   const discovery=path.join(project,'app/src/main/assets/www/js/discovery-core.js');
   if(fs.existsSync(discovery))vm.runInContext(fs.readFileSync(discovery,'utf8'),context);
+  for(const name of ['journey-core.js','travel-catalog.js'])vm.runInContext(fs.readFileSync(path.join(project,'app/src/main/assets/www/js',name),'utf8'),context);
   const file=path.join(project,'app/src/main/assets/www/js/app.js');
   let source=fs.readFileSync(file,'utf8');
-  const exports=['loadState','emptyState','sampleTrip','setWishlistSelection','resolveWishlistNodes','buildAutomaticRoute','computeDay','dayConstraints','cloneVersion','planningIssueCount','objectOpenIssues','accommodationsForDate','daysBetween','addDays','Providers','wishlistKey','versionMetrics'];
+  const exports=['loadState','emptyState','sampleTrip','setWishlistSelection','resolveWishlistNodes','buildAutomaticRoute','computeDay','dayConstraints','cloneVersion','buildJourneyDraft','versionConnections','endpointModal','connectionLocationHtml','renderFind','renderJourneyPlan','planningIssueCount','objectOpenIssues','accommodationsForDate','daysBetween','addDays','Providers','wishlistKey','versionMetrics'];
   if(source.includes('function normalizeLoadedState('))exports.push('normalizeLoadedState','publicWildObservation','invalidateStopRoutes','getWishlistEntry','connectionModal','transferModal','showModal','closeModal','openSuggestionDetail','persistSoon','refreshDayRoutes','syncConnectionTransfers');
   if(source.includes('function searchPoints('))exports.push('searchPoints','submitPoiSearch','resetDiscoverySearch','renderSearchResults','customWishModal','addCountryForItem','discoveryCountry','wishSettingsModal','makeAutoStop','editTripCountries');
   source=source.replace(/\n\}\)\(\);\s*$/,`\nwindow.appTest={${exports.join(',')},setState:s=>state=s,getState:()=>state};\n})();`);

@@ -1,30 +1,42 @@
-# Unser Reiseplaner – Version 1.4.0
+# Unser Reiseplaner – Version 1.5.0
 
-Android-App für individuelle Reisen mit Prioritäten, Natur- und Fotomotiven. Grundlage ist der geprüfte GitHub-Stand 1.3.1 (`646f92b607ecc81b3cbc640878367c55cb485121`).
+Android-App für individuelle Natur-, Wildlife-, Städte- und Fotoreisen. Grundlage ist GitHub-Version 1.4.0 (`e1611d74f9d20e4edb8eb32016c136774b243db3`).
 
-## Bedienung
+## Einstieg
 
-**Reisen → Entdecken → Wünsche → Plan → Karte.** Einstellungen, Datensicherung und App-Updates erreichst du über das Zahnrad oben rechts.
+**Reise finden** zeigt passende Regionen für einen Reisemonat oder vergleicht die Jahreszeiten mehrerer Wunschziele. Die Startsammlung umfasst 20 Regionsprofile mit Quellen. Eine Empfehlung ist eine redaktionelle Orientierung; Wetter, Tierbeobachtungen, Tickets und tatsächliche Erreichbarkeit müssen separat geprüft werden.
 
-Lege eine Reise mit einem oder mehreren Ländern und einem Zeitraum an. Suche gezielt nach einem Ort, einer Sehenswürdigkeit oder Tierart. Suchgebiet: alle Reiseländer, einzelnes Land oder weltweit. Speichere Treffer über Plus in der Wunschliste. Fehlt dein Wunsch, nutze „Eigener Ort“. Koordinaten dürfen zunächst offen bleiben.
+**Meine Reisen** enthält die gespeicherten Reisen. Eine neue Reise entsteht in drei Schritten: Zeitraum und optionaler Abreiseort, Fortbewegung, Länder. Innerhalb einer Reise gibt es **Wünsche**, **Tagesplan**, **Karte** und **Entdecken**. Varianten stehen im Auswahlmenü oben; Einstellungen und Backup am Zahnrad.
 
-Unter „Priorität, Zeit & Foto“ legst du fest, was wichtig ist, wie lange du bleiben möchtest und welche Fotomotive du planst. Ein selbst eingegebenes Aufnahmefenster begrenzt die gesamte Besuchszeit; es ist keine berechnete Goldene Stunde. Aufnahmehinweise bleiben am Wunsch und am erzeugten Stopp erhalten.
+## Wunschziele und Zugang
 
-Die Route entsteht als neue Variante. Wähle geografische Reihenfolge oder die Reihenfolge deiner Wunschliste sowie Fahr- und Aktivitätenbudget. Nicht passende Wünsche bleiben mit Gründen sichtbar. Prüfe anschließend die konkreten Verbindungen, Unterkünfte und offenen Angaben. Bestehende Buchungen werden in der neuen automatischen Variante nicht übernommen.
+Jeder Wunsch kann unter „Ausgangsort / Zugang“ eine Basis, Wegart, Hin-/Rückweg, Gehzeit, Quelle und Notizen bekommen. Beispiel Fitz Roy: El Chaltén ist die Basis; Laguna Capri und Laguna de los Tres sind unterschiedliche Ausflüge. Die Vorlagen enthalten eigene konservative Zeitbudgets, keine aktuellen Wegzustände. Ausgangsort und Ziel müssen bei Bedarf auf der Karte gewählt werden. Eine Vorlage setzt keinen Kartenpunkt auf einen vermeintlich erreichbaren Berggipfel.
 
-## Bauen und installieren
+Der Entwurf reserviert Zeit für Hinweg, Aufenthalt und Rückweg. Fotozeitfenster beziehen sich auf den Aufenthalt. Unbekannte Zugangszeiten bleiben offen. Ein Ortswechsel belegt vorläufig einen Reisetag; bei angegebenem Abreiseort werden An- und Rückreise ebenfalls reserviert. Lange Verbindungen können zusätzliche Tage benötigen. Die App hat keine weltweite Verbindungsdatenbank und bestätigt keine durchführbare Gesamtreise.
 
-- Smartphone/Termux: `UPDATE_1_4_0_TERMUX.md`.
+Die ursprüngliche Variante bleibt erhalten. Bereits belegte Tage, Übernachtungen und Buchungen werden in die Kopie übernommen. Freie Tage werden ergänzt. Nicht unterzubringende Wünsche bleiben mit Gründen sichtbar. Ändere zur Überarbeitung eines eingeplanten Wunsches dessen Stopp oder erstelle eine frische Variante.
+
+## Verkehrsmittel und Karte
+
+„Öffentliche Verkehrsmittel“ erlaubt Bus, Bahn, Fähre und Fußwege. Flüge sind separat wählbar. Taxi, Shuttle und Tour benötigen den Modus ohne Mietwagen oder Auto sowie ihre jeweilige Freigabe. Bei einer geänderten Fortbewegung werden unpassende bestehende Verbindungen gemeldet; sie werden nicht gelöscht.
+
+Langstrecken-Verbindungen haben Abfahrts- und Ankunftspunkte. Suche den konkreten Flughafen, Bahnhof oder Busbahnhof und wähle den Treffer selbst aus. Die Karte zeigt diese Punkte auch am Ankunftstag. Gestrichelte Linien zeigen eine schematische Verbindung. Für PRG, PER, FTE und CJC gibt es erste Quellenhinweise zu ÖPNV/Shuttles; an anderen Knoten sind eigene Hinweise möglich.
+
+Google Maps öffnet sich extern. Fahrpläne, Verfügbarkeiten und Tickets bleiben bei den jeweiligen Anbietern. Es werden keine ÖPNV-Reisezeiten aus Luftlinien geschätzt. Vorhandene Buchungszeiten können manuell eingetragen werden. OSRM bleibt für Autostrecken verfügbar.
+
+## Update und Prüfung
+
+- Smartphone/Termux: `UPDATE_1_5_0_TERMUX.md`.
 - Android Studio: `INSTALLATION_ANDROID_STUDIO.md`.
-- Lokale Struktur- und Funktionstests: `bash tools/verify.sh`.
-- Android-Build und Lint: `bash tools/verify.sh --android` (JDK 21 und Android-SDK erforderlich).
-- Prüfnachweise und Einschränkungen: `PRUEFBERICHT_1_4_0.md`.
-- Marktvergleich, Fotografie-Positionierung und Roadmap: `docs/MARKTRECHERCHE_1_4_0.md`.
+- Technische Tests: `bash tools/verify.sh`.
+- Android-Build und Lint: `bash tools/verify.sh --android` (JDK 21/SDK benötigt).
+- Nachweise und Einschränkungen: `PRUEFBERICHT_1_5_0.md`.
+- Produktentscheidungen aus der Marktrecherche: `docs/ENTSCHEIDUNGEN_1_5_0.md`.
 
-## Technische Grundlage
+Die iterative Anwenderprüfung startet erst nach deiner Freigabe einer konkreten Version. Hier liegt kein Test auf deinem Pixel 6 Pro / Android 17 vor.
 
-Native Android-Hülle mit WebView und SQLite, statische HTML/CSS/JavaScript-Oberfläche. Keine Anmeldung in der Reise-App nötig. Geodaten von OpenStreetMap/Nominatim/Overpass, Straßenrouten von OSRM, Ortsinformationen und Bilder von Wikimedia, Tierarten und historische Beobachtungen von iNaturalist. Jeder Dienst hat eigene Verfügbarkeit, Nutzungsbedingungen und Abdeckung. Suchbegriffe und benötigte Koordinaten werden zur jeweiligen Abfrage an den Dienst gesendet.
+## Daten und Speicherung
 
-Für den privaten Bestand bleibt der bisherige Nominatim-Dienst vorkonfiguriert. Vor breiter Verteilung ist ein gemeinsam begrenzter Suchproxy oder eigener/vertraglicher Suchdienst erforderlich. Ein Nominatim-kompatibler HTTPS-Endpunkt ist in Einstellungen ohne neue APK umstellbar. Offline bleiben gespeicherte Reiseinformationen verfügbar; externe Karten, Fotos und neue Abfragen benötigen Verbindung.
+Native Android-Hülle mit WebView und lokaler SQLite-Speicherung, keine Anmeldung und kein Tracking. Externe Karten, Fotos und neue Abfragen benötigen Internet. Recherchequellen: OpenStreetMap/Nominatim/Overpass, Wikimedia und iNaturalist; Saison-/Zugangshinweise zusätzlich von offiziellen Tourismus-, Flughafen- und Betreiberseiten. Quellen stehen bei den Profilen und in `DATENQUELLEN.md`.
 
-Versionen, Tagesplanung, Kartenfilter, Stadtführungen, Verbindungen, Unterkünfte, Transfers, Backups und der signierte GitHub-Updateweg aus 1.3.1 sind enthalten. Die App ersetzt keine Buchungsbestätigung oder Navigationsfreigabe für ein bestimmtes Fahrzeug.
+Für breitere Verteilung ist ein gemeinsam begrenzter oder eigener Suchdienst erforderlich. Ein Nominatim-kompatibler HTTPS-Endpunkt bleibt in Einstellungen konfigurierbar. Exportiere vor dem Update ein JSON-Backup. Die Debug-APK kann die installierte Release-App nicht als Update ersetzen; dafür bleibt der bisherige signierte GitHub-Releaseweg bestehen.

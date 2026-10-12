@@ -1,3 +1,15 @@
+## 1.5.0 — 2026-10-12
+
+- Zwei Hauptbereiche: Reise finden und Meine Reisen; Reisebereiche Wünsche, Tagesplan, Karte und Entdecken. Aufklappbare Tage, Varianten unter einem Menü, geführte Neuanlage in drei Schritten.
+- Fortbewegung direkt bei der Neuanlage: öffentliche Verkehrsmittel, ohne Mietwagen mit separat erlaubten Extras, oder Auto/Camper. Flüge separat wählbar. Alte Reisen behalten ihre bisherige motorisierte Planungsgrundlage.
+- Wunschziele mit Ausgangsort, Hinweg, Aufenthalt und Rückweg. Fitz-Roy-Vorlagen ab El Chaltén; Gehzeit und Fotozeitfenster werden berücksichtigt.
+- Neuer vorläufiger Routenentwurf in eigener Variante: Wunschreihenfolge, reservierte Reisetage, An-/Rückreise bei gesetztem Abreiseort. Bestehende Buchungen und belegte Tage bleiben erhalten. Nicht passende Wünsche mit Begründung.
+- Jahresplaner mit 20 redaktionellen Regionsprofilen: Zeitraum → Ziele oder Ziele → Monatsvergleich. Wildlife, Natur, Städte und Fotografie; Quellen und Grenzen sichtbar.
+- Kartenpunkte für konkrete Flughäfen, Bahnhöfe, Busstationen und Häfen. Ankunfts-/Abfahrtsdatum filterbar; fehlende Punkte werden gemeldet. Verbindungslinien sind schematisch.
+- Erste Flughafenhinweise für PRG, PER, FTE und CJC. Externe Navigation über Google Maps. Keine Fahrpläne und keine aus Luftlinien errechneten ÖPNV-Zeiten.
+- Ausgewählte Änderungen direkt rückgängig; nach späteren Änderungen wird der Rückgängig-Stand verworfen, damit keine neueren Eingaben verloren gehen.
+- Schema 8, Versionscode 12. Bestehende Reisen werden migriert. Zehn zusätzliche Regressionstests für Zugang, ÖPNV, Saison, Kartenpunkte und Buchungserhalt.
+
 # Changelog
 
 ## 1.4.0 – Entdecken, Länder und Fotografie

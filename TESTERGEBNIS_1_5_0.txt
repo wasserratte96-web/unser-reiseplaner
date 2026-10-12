@@ -1,0 +1,6 @@
+Technische Prüfung 1.5.0 – 2026-10-12
+Befehl: bash tools/verify.sh
+Projektstruktur, JavaScript-Syntax, Versionskonsistenz und Shell-Syntax: bestanden.
+Funktionstests: 58, bestanden: 58, fehlgeschlagen: 0, übersprungen: 0.
+Android: separater Nachweis im PRUEFBERICHT_1_5_0.md.
+Keine iterative Anwenderprüfung oder Pixel-Geräteprüfung erfolgt.
