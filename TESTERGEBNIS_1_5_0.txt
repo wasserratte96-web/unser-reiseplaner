@@ -1,0 +1,10 @@
+Technische Prüfung 1.5.0 – 2026-10-12
+Befehl: bash tools/verify.sh
+Projektstruktur, JavaScript-Syntax, Versionskonsistenz und Shell-Syntax: bestanden.
+Funktionstests: 58, bestanden: 58, fehlgeschlagen: 0, übersprungen: 0.
+Android: assembleDebug, lintDebug, assembleRelease und lintRelease erfolgreich.
+GitHub-Prüflauf: https://github.com/wasserratte96-web/unser-reiseplaner/actions/runs/38302714023
+Geprüfter Commit: 95816a636fb39a2590f79d5c5f566d736598be93
+Termux-Skript im isolierten Shell-Probelauf: 1.4.0 → 1.5.0 erfolgreich; eigene Änderungen blockiert, Quellcode-Backup erstellt, lokale Einstellungen und Test-Schlüsselmaterial erhalten.
+Signierte Veröffentlichung: noch offen; erfolgt durch den bisherigen Termux-Releaseweg.
+Keine iterative Anwenderprüfung oder Pixel-Geräteprüfung erfolgt.

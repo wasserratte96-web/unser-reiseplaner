@@ -44,3 +44,9 @@ Manuelle Ortssuche: Nominatim mit Länder-Codes, eindeutigen OSM-IDs, Cache und 
 Manuelle Tiernamensuche: iNaturalist-Taxon-ID, kein automatisch behauptetes Vorkommen. Inspirationslisten starten mit Säugetieren; Artensuche unterstützt weitere Tiergruppen. Historische Beobachtungen bleiben von Fotografiechancen getrennt. Fotozeitfenster sind selbst eingegeben. Es wurden keine neuen proprietären Foto-Datenbanken oder Wetterdienste integriert.
 
 Marktvergleich, Quellen- und Bildrechtekonzept sowie weiterer Ausbau: docs/MARKTRECHERCHE_1_4_0.md.
+
+## Ergänzungen 1.5.0
+
+`travel-catalog.js` enthält 20 Regionsprofile, zwei Fitz-Roy-Zugangsvorlagen und vier Flughafenhinweise. Die Quellen-URLs und das Prüfdatum 2026-10-12 sind direkt am Datensatz hinterlegt und in der Oberfläche erreichbar. Die Einträge beruhen auf offiziellen Tourismus-, Park-, Flughafen- und Betreiberseiten. Monatsfenster und Mindestaufenthalte sind redaktionelle Orientierung, keine individuellen Wetter-, Tier- oder Transportprognosen.
+
+Google-Maps-Links öffnen eine externe Ortsansicht oder Wegsuche. Dabei werden die gewählten Orte/Koordinaten an Google übergeben. Es wird keine Maps-API eingebunden und es werden keine Fahrpläne abgerufen. ÖPNV-Verbindungen erhalten keine automatisch geschätzte Dauer. Eigene Zeitbudgets und Buchungszeiten bleiben manuell. OSRM dient weiterhin ausschließlich Straßenrouten.

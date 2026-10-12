@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 urp_version="${1:-}"
-urp_notes="${2:-Unser Reiseplaner 1.4.0: neue Oberfläche, manuelle POI-Suche, eigene Orte, Reisen über mehrere Länder und Fotozeitfenster.}"
+urp_notes="${2:-Unser Reiseplaner 1.5.0: geführte Reiseplanung, ÖPNV-Vorgaben, Ausgangsorte und Ausflüge, Jahresplaner sowie Kartenpunkte für Langstrecken und Flughafenhinweise.}"
 urp_repo='wasserratte96-web/unser-reiseplaner'
-[[ "$urp_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Aufruf: bash tools/publish-mobile.sh 1.4.0 "Beschreibung"'; exit 2; }
+[[ "$urp_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Aufruf: bash tools/publish-mobile.sh 1.5.0 "Beschreibung"'; exit 2; }
 cd "$(git rev-parse --show-toplevel)"
 [[ "$(git branch --show-current)" == main ]] || { echo 'Bitte im vorgesehenen main-Checkout ausführen.'; exit 1; }
 urp_remote="$(git remote get-url origin)"
@@ -42,4 +42,4 @@ gh workflow run build-release.yml --repo "$urp_repo" --ref main -f source_sha="$
 urp_release="$(urp_wait_for_run build-release.yml "$urp_request-release")"
 gh run watch "$urp_release" --repo "$urp_repo" --exit-status
 gh release view "v$urp_version" --repo "$urp_repo" --json name,url --jq '.name + "\n" + .url'
-echo 'Fertig. In der App: Mehr → App-Updates → Nach Updates suchen.'
+echo 'Fertig. In der App: Zahnrad (bzw. Mehr) → App-Updates → Nach Updates suchen.'
