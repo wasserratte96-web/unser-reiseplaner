@@ -18,7 +18,7 @@ urp_backup="$(dirname -- "$urp_target")/reiseplaner-quellcode-backup-$(date -u +
 mkdir -p "$urp_backup"
 git -C "$urp_target" archive HEAD | tar -x -C "$urp_backup"
 # All source files are present. Keep unrelated files and local signing material.
-rsync -a --exclude='.git/' --exclude='.gradle/' --exclude='build/' --exclude='.idea/' --exclude='node_modules/' --exclude='qa-output/' \
+rsync -a --checksum --exclude='.git/' --exclude='.gradle/' --exclude='build/' --exclude='.idea/' --exclude='node_modules/' --exclude='qa-output/' \
   --exclude='local.properties' --exclude='*.jks' --exclude='*.keystore' \
   --exclude='keystore-base64.txt' --exclude='release-signing.properties' \
   "$urp_source/" "$urp_target/"

@@ -50,7 +50,7 @@ Nach „Fertig“: **bisherige App → Mehr → App-Updates → Nach Updates suc
 
 Bei einer Signaturfehlermeldung die bestehende App installiert lassen. Verwende den bisherigen Release-Schlüssel; seine Werte nicht im Chat teilen.
 
-Schau dir zunächst selbst die neue Version an. Einstieg: **Reise finden** für den Jahresplaner, **Meine Reisen** für bestehende Reisen. Eine Reise beginnt in drei Schritten, einschließlich Fortbewegung. Wünsche haben jetzt „Ausgangsort / Zugang“. Langstrecken-Verbindungen haben eigene Abfahrts- und Ankunftspunkte auf der Karte.
+Prüfe nach der Installation kurz deine vorhandenen Reisen und die Android-Bedienung. Einstieg: **Reise finden** für den Jahresplaner, **Meine Reisen** für bestehende Reisen. Eine Reise beginnt in drei Schritten, einschließlich Fortbewegung. Wünsche haben jetzt „Ausgangsort / Zugang“. Langstrecken-Verbindungen haben eigene Abfahrts- und Ankunftspunkte auf der Karte.
 
 Die Browserprüfung erfolgt in drei Durchgängen mit mobilen Ansichten und synthetischen Testreisen. Der genaue Bericht nennt die Prüfläufe und trennt simulierte Datenquellen von noch offenen Android-Gerätetests.
 

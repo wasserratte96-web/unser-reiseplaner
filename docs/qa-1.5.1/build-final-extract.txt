@@ -1,0 +1,19 @@
+Quelle: GitHub Actions 38411518075, Job 115344792960
+Geprüfter App-Commit: 61411b6a6f4ef3a68087ee9a7dc5ac4e353f4f33
+Auszug; vollständiges Protokoll: https://github.com/wasserratte96-web/unser-reiseplaner/actions/runs/38411518075
+
+2026-10-13T14:13:38.6739869Z   ref: 61411b6a6f4ef3a68087ee9a7dc5ac4e353f4f33
+2026-10-13T14:13:38.8723997Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin 61411b6a6f4ef3a68087ee9a7dc5ac4e353f4f33
+2026-10-13T14:13:39.3347359Z  * branch            61411b6a6f4ef3a68087ee9a7dc5ac4e353f4f33 -> FETCH_HEAD
+2026-10-13T14:13:39.3441035Z [command]/usr/bin/git checkout --progress --force 61411b6a6f4ef3a68087ee9a7dc5ac4e353f4f33
+2026-10-13T14:13:39.3531476Z Note: switching to '61411b6a6f4ef3a68087ee9a7dc5ac4e353f4f33'.
+2026-10-13T14:13:39.3593958Z 61411b6a6f4ef3a68087ee9a7dc5ac4e353f4f33
+2026-10-13T14:13:58.4221319Z Projektstruktur, JavaScript und Versionskonsistenz 1.5.1 geprüft. APK-Build separat erforderlich.
+2026-10-13T14:13:58.7076903Z # tests 63
+2026-10-13T14:13:58.7077160Z # pass 63
+2026-10-13T14:13:58.7077288Z # fail 0
+2026-10-13T14:14:13.9218817Z > Task :app:assembleDebug
+2026-10-13T14:14:20.8092097Z > Task :app:assembleRelease
+2026-10-13T14:14:21.2118124Z > Task :app:lintRelease
+2026-10-13T14:14:21.2121320Z > Task :app:lintDebug
+2026-10-13T14:14:21.3090682Z BUILD SUCCESSFUL in 22s

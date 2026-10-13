@@ -1,0 +1,16 @@
+Unser Reiseplaner 1.5.1 - Abschluss 13.10.2026
+Ausgangsversion: 1.5.0 / b1daea032153b434e361008869c3f6039438833b
+Geprüfter App-Code: 61411b6a6f4ef3a68087ee9a7dc5ac4e353f4f33
+
+Durchgang 1: 10 Browser-Szenarien, 22/28 Prüfpunkte erfolgreich; 6 Beanstandungen.
+Durchgang 2: 16 Browser-Szenarien, 45/48 Prüfpunkte erfolgreich; 3 Beanstandungen.
+Durchgang 3, endgültiger Lauf: 19 Browser-Szenarien, 57/57 Prüfpunkte erfolgreich.
+Funktionstests: 63/63 erfolgreich.
+Android: assembleDebug, lintDebug, assembleRelease, lintRelease erfolgreich.
+
+Browser: https://github.com/wasserratte96-web/unser-reiseplaner/actions/runs/38411517866
+Android: https://github.com/wasserratte96-web/unser-reiseplaner/actions/runs/38411518075
+
+Browserdatenquellen sind deterministische Testantworten. Kein Nachweis von Live-Datenqualität.
+Kein Test auf Android-Gerät oder Emulator, keine signierte Veröffentlichung durch diesen Prüfauftrag.
+Details, Reproduktion, Korrekturen und Grenzen: PRUEFBERICHT_1_5_1.md.

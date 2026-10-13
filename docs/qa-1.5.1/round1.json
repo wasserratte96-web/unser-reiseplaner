@@ -1,0 +1,197 @@
+{
+  "version": "1.5.0",
+  "started": "2026-10-13T13:55:07.559Z",
+  "viewport": {
+    "width": 412,
+    "height": 892
+  },
+  "providerMode": "Deterministic fixtures, not proof of live service availability",
+  "checks": [
+    {
+      "id": "fresh-start-no-example",
+      "pass": false,
+      "detail": "Erststart soll keine ungefragte Beispielreise anlegen"
+    },
+    {
+      "id": "global-navigation-hidden",
+      "pass": true,
+      "detail": "Reisenavigation auf Reise finden ausgeblendet"
+    },
+    {
+      "id": "first-launch-mobile-width",
+      "pass": true,
+      "detail": "{\"viewport\":412,\"width\":412}"
+    },
+    {
+      "id": "01-first-launch.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "public-hides-extras",
+      "pass": false,
+      "detail": "Taxi-/Shuttle-Extras bei Nur ÖPNV verborgen"
+    },
+    {
+      "id": "multicountry-wizard",
+      "pass": true,
+      "detail": "Zwei Länder und ÖPNV gespeichert"
+    },
+    {
+      "id": "created-trip-reload",
+      "pass": true,
+      "detail": "Reise bleibt nach Neuladen erhalten"
+    },
+    {
+      "id": "02-create-trip.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "wishlist-mobile-width",
+      "pass": true,
+      "detail": "{\"viewport\":412,\"width\":412}"
+    },
+    {
+      "id": "03-fitz-roy.completed",
+      "pass": false,
+      "detail": "locator.click: Timeout 5500ms exceeded.\nCall log:\n  - waiting for locator('#autoRouteBtn')\n    - locator resolved to <button id=\"autoRouteBtn\" class=\"primary full-width\">Route aus meinen Wünschen planen →</button>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <input value=\"\" type=\"url\" id=\"accessSource\"/> from <div id=\"modal\" class=\"modal\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <input value=\"\" type=\"url\" id=\"accessSource\"/> from <div id=\"modal\" class=\"modal\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    10 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <input value=\"\" type=\"url\" id=\"accessSource\"/> from <div id=\"modal\" class=\"modal\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n    - waiting for element to be visible, enabled and stable\n"
+    },
+    {
+      "id": "year-inputs-survive-mode",
+      "pass": false,
+      "detail": "Wechsel der Suchrichtung behält Eingaben"
+    },
+    {
+      "id": "season-comparison-visible",
+      "pass": true,
+      "detail": "Zwölf Monate mit Zielabgleich"
+    },
+    {
+      "id": "season-explanation",
+      "pass": true,
+      "detail": "Monatsauswahl erklärt passende Ziele"
+    },
+    {
+      "id": "04-year-planner.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "manual-search-add",
+      "pass": true,
+      "detail": "Manuelle Ortssuche ergänzt Wunschliste"
+    },
+    {
+      "id": "05-search-and-failure.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "failure-recovery-visible",
+      "pass": true,
+      "detail": "Nach Suchfehler bleiben erneute Suche und eigener Ort möglich"
+    },
+    {
+      "id": "06-network-failure.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "unknown-location-not-scheduled",
+      "pass": false,
+      "detail": "Ein Wunsch ohne Besuchsort darf nicht als zeitlich geplanter Ausflug erscheinen"
+    },
+    {
+      "id": "07-missing-location.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "delete-undo-visible",
+      "pass": true,
+      "detail": "Wunsch entfernen bietet Rückgängig"
+    },
+    {
+      "id": "delete-undo-restores",
+      "pass": true,
+      "detail": "Rückgängig stellt Wunsch wieder her"
+    },
+    {
+      "id": "08-wish-delete-undo.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "access-form-mobile-width",
+      "pass": true,
+      "detail": "{\"viewport\":412,\"width\":412}"
+    },
+    {
+      "id": "dialog-escape-closes",
+      "pass": true,
+      "detail": "Dialog lässt sich per Escape schließen"
+    },
+    {
+      "id": "09-modal-overflow.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "public-filter-excludes-incompatible",
+      "pass": false,
+      "detail": "Nur ÖPNV soll unpassende Treffer ausfiltern"
+    },
+    {
+      "id": "10-year-public-only.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "01-first-launch",
+      "complete": true
+    },
+    {
+      "name": "02-create-trip",
+      "complete": true
+    },
+    {
+      "name": "03-fitz-roy",
+      "complete": false,
+      "error": "locator.click: Timeout 5500ms exceeded.\nCall log:\n  - waiting for locator('#autoRouteBtn')\n    - locator resolved to <button id=\"autoRouteBtn\" class=\"primary full-width\">Route aus meinen Wünschen planen →</button>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <input value=\"\" type=\"url\" id=\"accessSource\"/> from <div id=\"modal\" class=\"modal\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <input value=\"\" type=\"url\" id=\"accessSource\"/> from <div id=\"modal\" class=\"modal\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    10 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <input value=\"\" type=\"url\" id=\"accessSource\"/> from <div id=\"modal\" class=\"modal\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n    - waiting for element to be visible, enabled and stable\n"
+    },
+    {
+      "name": "04-year-planner",
+      "complete": true
+    },
+    {
+      "name": "05-search-and-failure",
+      "complete": true
+    },
+    {
+      "name": "06-network-failure",
+      "complete": true
+    },
+    {
+      "name": "07-missing-location",
+      "complete": true
+    },
+    {
+      "name": "08-wish-delete-undo",
+      "complete": true
+    },
+    {
+      "name": "09-modal-overflow",
+      "complete": true
+    },
+    {
+      "name": "10-year-public-only",
+      "complete": true
+    }
+  ],
+  "finished": "2026-10-13T13:55:21.485Z",
+  "passed": 22,
+  "failed": 6
+}

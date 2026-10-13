@@ -47,5 +47,12 @@
   "baseCommit": "b1daea032153b434e361008869c3f6039438833b",
   "baseTree": "011484a3d230337ffba1c4b8b86929a1ed1fdd43",
   "currentVersion": "1.5.1",
-  "historicalBase": "Unser_Reiseplaner_V1_2_0_Update.zip"
+  "historicalBase": "Unser_Reiseplaner_V1_2_0_Update.zip",
+  "testedAppCommit": "61411b6a6f4ef3a68087ee9a7dc5ac4e353f4f33",
+  "browserRun": 38411517866,
+  "androidRun": 38411518075,
+  "unitTestsPassed": 63,
+  "browserScenarios": 19,
+  "browserChecksPassed": 57,
+  "packageNotes": "App-Code, Tests und Android-Buildkonfiguration entsprechen dem geprüften Commit. Abschlussdokumentation und Paketmanifest anschließend ergänzt; apply-update.sh um Inhaltsvergleich per Prüfsumme ergänzt und lokal nachgeprüft."
 }

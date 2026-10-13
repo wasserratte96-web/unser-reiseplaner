@@ -7,7 +7,9 @@
 - Wünsche ohne Besuchsort bleiben offen. Fehlende Wege zwischen Aktivitäten werden sichtbar, nachfolgende automatische Zeiten bleiben ungeprüft.
 - Gehzeitgrenze gilt für die Summe eines Tages. Bei reinen Fußwegen zählt mindestens Hin- plus Rückweg.
 - Gebuchte Nächte sperren nicht mehr jeden Ausflugstag. Der Ausgangsort wird mit dem Namen oder der Nähe der gebuchten Unterkunft abgeglichen (30 km als grober Ortsabgleich, keine Zugangsbestätigung).
+- Aus dem Jahresplaner übernommene Ausgangsorte können gesucht und bearbeitet werden. Manuell festgelegte Termine behalten ihre Uhrzeit trotz noch offener Anreise.
 - Lesbarere Aktionen in Wunschkarten, Ausgangsort bereits in der Wunschliste, getrennte Positionen für Rückgängig und Rückmeldungen.
+- Update-Skript vergleicht Dateiinhalte per Prüfsumme; Änderungen werden auch bei gleicher Dateigröße und gleichem Änderungszeitpunkt übernommen.
 - Wiederholbare Browserabläufe und gezielte Regressionen ergänzt. Browserdatenquellen sind Testantworten; kein nativer Android-Gerätetest.
 
 ## 1.5.0 — 2026-10-12
