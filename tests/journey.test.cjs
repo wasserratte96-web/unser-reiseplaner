@@ -4,7 +4,7 @@ const J=require('../app/src/main/assets/www/js/journey-core.js');
 const C=require('../app/src/main/assets/www/js/travel-catalog.js');
 const load=require('./app-harness.cjs');
 const days=Array.from({length:9},(_,i)=>`2027-02-${String(i+1).padStart(2,'0')}`);
-const wish=(key,extra={})=>({key,name:key,kind:'highlight',priority:'must',durationMin:60,...extra});
+const wish=(key,extra={})=>({key,name:key,lat:-49.33,lng:-72.89,kind:'highlight',priority:'must',durationMin:60,...extra});
 function setup(){const h=load(),v={id:'v',name:'Original',startDate:days[0],endDate:days.at(-1),days:days.map((date,i)=>({id:'d'+i,date,startTime:'08:00',endTime:'20:00',stops:[]})),connections:[],flights:[],transfers:[]};const t={id:'t',title:'Patagonien',countries:[{code:'AR',name:'Argentinien'}],country:'Argentinien',mobility:{mode:'public',maxWalkMin:600},wishlist:[],versions:[v],selectedVersionId:'v'};Object.assign(h.app.getState(),{trips:[t],activeTripId:'t'});return {...h,t,v};}
 test('public-only policy rejects motorized extras and flights require a separate choice',()=>{
   for(const mode of ['car','rentalcar','camper','taxi','rideshare','shuttle','tour','flight'])assert.equal(J.allowed(mode,{mode:'public',allowTaxi:true,allowShuttle:true,allowTours:true}),false,mode);

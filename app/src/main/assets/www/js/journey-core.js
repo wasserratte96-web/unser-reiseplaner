@@ -54,7 +54,7 @@
       const transit=p.access==='public'?'ÖPNV und Fußwege grundsätzlich nutzbar':p.access==='assisted'?'Für Naturziele Transfer oder Tour prüfen':'Zugang je Ziel noch prüfen';
       const compatible=!mobility||policy(mobility).mode!=='public'||p.access!=='assisted';
       return {...p,compatible,enoughDays:Number(days)>=p.minDays,transit};
-    }).sort((a,b)=>Number(b.compatible)-Number(a.compatible)||Number(b.enoughDays)-Number(a.enoughDays)||a.name.localeCompare(b.name,'de'));
+    }).filter(p=>p.compatible).sort((a,b)=>Number(b.compatible)-Number(a.compatible)||Number(b.enoughDays)-Number(a.enoughDays)||a.name.localeCompare(b.name,'de'));
   }
   function draft(wishes,{days,mobility,dayStart='08:00',dayEnd='20:00',dayBudgets={},occupied=[],existingKeys=[],origin=''}={}){
     const p=policy(mobility),reserved=new Set(occupied),existing=new Set(existingKeys),result=days.map(d=>({date:d,events:[],reserved:reserved.has(d)}));
@@ -70,6 +70,7 @@
       const snapshot={index,cursor,lastBase,lastNode,events:result.map(d=>d.events.length)};
       let reason='';let a;
       try{a=access(wish.access);}catch(e){deferred.push({...wish,reason:e.message});continue;}
+      if(!a&&!P.hasLocation(wish)){deferred.push({...wish,reason:wish.kind==='wildlife'?'Zuerst einen konkreten Beobachtungsort oder Ausgangsort für diesen Tierwunsch auswählen.':'Zuerst den Standort suchen oder einen Ausgangsort und Zugang ergänzen.'});continue;}
       if(a&&!allowed(a.mode,p))reason='Der Zugang braucht ein nicht erlaubtes Verkehrsmittel.';
       if(a&&a.walkMin!==null&&a.walkMin>p.maxWalkMin)reason='Der Fußweg überschreitet deine gewählte Gehzeit.';
       const base=a?{name:a.baseName,lat:a.baseLat,lng:a.baseLng}:wish;
