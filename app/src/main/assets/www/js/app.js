@@ -1378,7 +1378,7 @@ function newJourneyWizard(seed={}){
       if(!draft.countries.length){$('#journeyError').textContent='Wähle mindestens ein Reiseland.';return;}
       checkpoint('Neue Reise');const v={id:uid('ver'),name:'Meine Planung',startDate:draft.start,endDate:draft.end,days:Array.from({length:daysBetween(draft.start,draft.end)},(_,i)=>({id:uid('day'),date:addDays(draft.start,i),startTime:state.settings.defaultStart,endTime:state.settings.defaultEnd,stops:[]})),flights:[],connections:[],transfers:[]};
       const t={id:uid('trip'),title:draft.title,origin:draft.origin,mobility:draft.mobility,countries:draft.countries,country:draft.countries[0].name,destination:draft.countries.map(c=>c.name).join(' · '),wishlist:[],interests:['Natur','Fotografie'],versions:[v],selectedVersionId:v.id,dateWindows:[{start:draft.start,end:draft.end}]};
-      state.trips.push(t);state.activeTripId=t.id;if(seed.profile){const p=seed.profile;setWishlistSelection('city',{name:p.base,countryCode:p.countryCode,lat:null,lng:null,notes:p.note+'\n'+p.source},true,'high');}persistSoon();resetDiscoverySearch();closeModal();renderAll();switchView(seed.profile?'wishlist':'discover');
+      state.trips.push(t);state.activeTripId=t.id;if(seed.profile){const p=seed.profile;setWishlistSelection('city',{customId:'profile:'+p.id,name:p.base,kind:'city',countryCode:p.countryCode,lat:null,lng:null,durationMin:300,notes:p.note+'\n'+p.source},true,'high');}persistSoon();resetDiscoverySearch();closeModal();renderAll();switchView(seed.profile?'wishlist':'discover');
     };
   });show();
 }
