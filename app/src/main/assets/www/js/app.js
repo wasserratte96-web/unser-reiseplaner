@@ -899,7 +899,7 @@ function computeDay(v,day) {
     const photoConflict=hasPhotoWindow&&(!validPhotoWindow||slot.start<photoStart||slot.end>photoEnd);
     const overflow=!!slot.overflow||!fits||overlap||photoConflict;
     if(overflow){conflicts.push(`${s.name}: ${photoConflict?'Aufnahme liegt außerhalb des Fotozeitfensters':overlap?'Reihenfolge oder Fixzeit kollidiert':'kein passendes Zeitfenster'}`);overrun+=Math.max(1,slot.end-c.dayEnd,cur-slot.start,photoConflict&&validPhotoWindow?Math.max(photoStart-slot.start,slot.end-photoEnd):0);}
-    timeUnknown=timeUnknown||!!s.scheduleUnknown;
+    timeUnknown=(fixed===null&&timeUnknown)||!!s.scheduleUnknown;
     rows.push({stop:s,arrival:slot.start,departure:slot.end,overflow,timeUnknown});visit+=dur;cur=Math.max(cur,slot.end);
     if(i<day.stops.length-1){const next=day.stops[i+1],sameBase=s.access&&next.access&&normalizeName(s.access.baseName)===normalizeName(next.access.baseName),samePoint=Planner.hasLocation(s)&&Planner.hasLocation(next)&&haversine(s,next)<.05;
       if(!sameBase&&!samePoint&&(!s.routeToNext||s.routeToNext.durationUnknown)){timeUnknown=true;notices.push(`Wegzeit von ${s.name} nach ${next.name} noch offen. Folgende Zeiten sind ungeprüft.`);}}

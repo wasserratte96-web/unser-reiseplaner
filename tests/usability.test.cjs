@@ -25,3 +25,8 @@ test('an unknown public-transport leg makes later automatic times visibly unreso
  const h=load(),v={id:'v',days:[],connections:[],flights:[],transfers:[]},day={id:'d',date:days[0],startTime:'08:00',endTime:'20:00',stops:[{id:'a',name:'A',lat:50,lng:14},{id:'b',name:'B',lat:51,lng:15}].map(s=>({...s,durationMin:60,durationWish:60,modeToNext:'transit'}))};v.days=[day];
  const r=h.app.computeDay(v,day);assert.equal(r.rows[1].timeUnknown,true);assert.ok(r.notices.some(s=>/Wegzeit/.test(s)));
 });
+
+test('a manually fixed appointment keeps its time despite an unknown preceding way',()=>{
+ const h=load(),day={id:'d',date:days[0],startTime:'08:00',endTime:'20:00',stops:[{id:'a',name:'A',lat:50,lng:14,durationMin:60,modeToNext:'transit'},{id:'b',name:'Booked visit',lat:51,lng:15,durationMin:60,fixedStart:'14:00'}]},v={days:[day],connections:[],flights:[],transfers:[]};
+ const r=h.app.computeDay(v,day);assert.equal(r.rows[1].timeUnknown,false);assert.equal(r.rows[1].arrival,840);assert.equal(r.notices.length,1);
+});
