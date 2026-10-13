@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 urp_version="${1:-}"
-urp_notes="${2:-Unser Reiseplaner 1.5.0: geführte Reiseplanung, ÖPNV-Vorgaben, Ausgangsorte und Ausflüge, Jahresplaner sowie Kartenpunkte für Langstrecken und Flughafenhinweise.}"
+urp_notes="${2:-Unser Reiseplaner 1.5.1: Bedienung in drei Durchgängen überarbeitet, stabilere Formulare, Tagesgehzeit, Ausflüge trotz gebuchter Nächte und sichtbare offene Wegzeiten.}"
 urp_repo='wasserratte96-web/unser-reiseplaner'
-[[ "$urp_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Aufruf: bash tools/publish-mobile.sh 1.5.0 "Beschreibung"'; exit 2; }
+[[ "$urp_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Aufruf: bash tools/publish-mobile.sh 1.5.1 "Beschreibung"'; exit 2; }
 cd "$(git rev-parse --show-toplevel)"
 [[ "$(git branch --show-current)" == main ]] || { echo 'Bitte im vorgesehenen main-Checkout ausführen.'; exit 1; }
 urp_remote="$(git remote get-url origin)"

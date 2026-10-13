@@ -11,3 +11,13 @@
 #endpointCandidates,#accessCandidates{display:grid;gap:8px;margin:10px 0}#endpointCandidates button,#accessCandidates button{text-align:left;font-size:13px}#accessError,#endpointError,#draftError{color:#923d2a;font-size:13px}.maphint{max-width:calc(100% - 24px);font-size:12px;pointer-events:none}#undoChange{position:fixed;bottom:calc(78px + env(safe-area-inset-bottom));right:14px;z-index:1050;background:var(--ink);color:white;box-shadow:0 3px 16px #0002;font-size:12px;max-width:220px}
 @media(min-width:720px){.year-results{grid-template-columns:repeat(2,minmax(0,1fr))}.year-controls{grid-template-columns:repeat(3,minmax(0,1fr))}.year-query{grid-column:span 2}.year-controls>.checkline{grid-column:auto}.year-controls>.primary{grid-column:1/-1}.month-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.trip-workspace{padding:10px 28px}.trip-workspace button{font-size:14px}.journey-day-body{padding:20px}.plan-add-menu{min-width:170px}}
 @media(max-width:380px){.pagehead:has(.plan-add-menu){display:block}.plan-add-menu{margin-top:14px;max-width:none}.year-controls{padding:14px;gap:12px}.season-card{padding:16px}.terminal-actions button{flex-basis:100%}}
+
+/* Findings from the mobile walkthrough: separate feedback and room for actions. */
+.wish-item-actions{flex-wrap:wrap;gap:8px}
+.wish-item-actions>button:not([data-wish-move]):not([data-wish-remove]){flex:1 1 28%;min-height:44px}
+.wish-item-actions>button[data-wish-move],.wish-item-actions>button[data-wish-remove]{min-width:44px;min-height:44px}
+.wish-info .wish-access-label{color:var(--ink);line-height:1.5}
+body:has(#undoChange:not([hidden])) .toast{bottom:calc(142px + env(safe-area-inset-bottom))}
+body:has(#modal:not(.hidden)) #undoChange{visibility:hidden}
+#customLocationResults{display:grid;gap:8px;margin:12px 0;font-size:13px}
+#customLocationResults button{text-align:left}

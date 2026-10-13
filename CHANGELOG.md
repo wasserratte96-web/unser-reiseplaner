@@ -1,3 +1,15 @@
+## 1.5.1 – Bedienung und Zuverlässigkeit (13.10.2026)
+
+- Neue Installation startet ohne ungefragte Beispielreise. Bestehende Reisen bleiben erhalten.
+- Dialoge sind sofort bedienbar. Schnelle Auswahl in Reiseanlage und Ausflugsvorlagen geht nicht mehr verloren.
+- Jahresplaner behält Eingaben beim Richtungswechsel; „Nur ÖPNV“ entfernt als unpassend bekannte Profile. Ungeprüfte Zugänge bleiben ausdrücklich gekennzeichnet.
+- Eigene Wünsche behalten ihren Ausgangsort beim Bearbeiten. Standortsuche ergänzt Koordinaten per gewähltem Treffer.
+- Wünsche ohne Besuchsort bleiben offen. Fehlende Wege zwischen Aktivitäten werden sichtbar, nachfolgende automatische Zeiten bleiben ungeprüft.
+- Gehzeitgrenze gilt für die Summe eines Tages. Bei reinen Fußwegen zählt mindestens Hin- plus Rückweg.
+- Gebuchte Nächte sperren nicht mehr jeden Ausflugstag. Der Ausgangsort wird mit dem Namen oder der Nähe der gebuchten Unterkunft abgeglichen (30 km als grober Ortsabgleich, keine Zugangsbestätigung).
+- Lesbarere Aktionen in Wunschkarten, Ausgangsort bereits in der Wunschliste, getrennte Positionen für Rückgängig und Rückmeldungen.
+- Wiederholbare Browserabläufe und gezielte Regressionen ergänzt. Browserdatenquellen sind Testantworten; kein nativer Android-Gerätetest.
+
 ## 1.5.0 — 2026-10-12
 
 - Zwei Hauptbereiche: Reise finden und Meine Reisen; Reisebereiche Wünsche, Tagesplan, Karte und Entdecken. Aufklappbare Tage, Varianten unter einem Menü, geführte Neuanlage in drei Schritten.

@@ -1,3 +1,9 @@
+# Geprüfte Überarbeitung 1.5.1
+
+Basis: 1.5.0. Änderungen: CHANGELOG.md. Installation: UPDATE_1_5_1_TERMUX.md. Prüfungen und Grenzen: PRUEFBERICHT_1_5_1.md.
+
+Browserabläufe: `npm install --prefix tests/browser --ignore-scripts`, anschließend `tests/browser/node_modules/.bin/playwright install chromium` und `node tests/browser/walkthrough.cjs`. Die getrennten Browserabhängigkeiten sind für den normalen Termux-Updateweg nicht erforderlich.
+
 # Unser Reiseplaner – Version 1.5.0
 
 Android-App für individuelle Natur-, Wildlife-, Städte- und Fotoreisen. Grundlage ist GitHub-Version 1.4.0 (`e1611d74f9d20e4edb8eb32016c136774b243db3`).
