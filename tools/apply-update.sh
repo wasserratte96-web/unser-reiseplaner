@@ -10,7 +10,7 @@ urp_target="$(cd -- "$urp_target" && pwd)"
 [[ -f "$urp_target/app/build.gradle" ]] || { echo 'Im Checkout fehlt das bisherige Android-Projekt.'; exit 1; }
 urp_current="$(sed -n "s/.*ciVersionName.*?: '\([^']*\)'.*/\1/p" "$urp_target/app/build.gradle")"
 case "$urp_current" in
-  1.0.0|1.1.0|1.1.1|1.1.2|1.1.3|1.1.4|1.1.5|1.2.0|1.3.0|1.3.1|1.4.0) ;;
+  1.0.0|1.1.0|1.1.1|1.1.2|1.1.3|1.1.4|1.1.5|1.2.0|1.3.0|1.3.1|1.4.0|1.5.0) ;;
   *) echo "Unbekannter oder neuerer Ausgangsstand ($urp_current). Kein automatisches Überschreiben."; exit 1 ;;
 esac
 bash "$urp_source/tools/verify.sh"
@@ -18,10 +18,10 @@ urp_backup="$(dirname -- "$urp_target")/reiseplaner-quellcode-backup-$(date -u +
 mkdir -p "$urp_backup"
 git -C "$urp_target" archive HEAD | tar -x -C "$urp_backup"
 # All source files are present. Keep unrelated files and local signing material.
-rsync -a --exclude='.git/' --exclude='.gradle/' --exclude='build/' --exclude='.idea/' \
+rsync -a --checksum --exclude='.git/' --exclude='.gradle/' --exclude='build/' --exclude='.idea/' --exclude='node_modules/' --exclude='qa-output/' \
   --exclude='local.properties' --exclude='*.jks' --exclude='*.keystore' \
   --exclude='keystore-base64.txt' --exclude='release-signing.properties' \
   "$urp_source/" "$urp_target/"
 chmod +x "$urp_target/gradlew" "$urp_target/tools/"*.sh
 printf 'Update eingespielt. Vorheriger Quellcode: %s\n' "$urp_backup"
-printf 'Weiter im Checkout: bash tools/publish-mobile.sh 1.5.0\n'
+printf 'Weiter im Checkout: bash tools/publish-mobile.sh 1.5.1\n'

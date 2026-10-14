@@ -1,0 +1,28 @@
+name: Bedienablaeufe im Browser
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm install --prefix tests/browser --ignore-scripts --no-audit --no-fund --package-lock=false
+      - run: tests/browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Reiseablaeufe bedienen und pruefen
+        run: node tests/browser/walkthrough.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Browser-Pruefprotokoll
+          path: qa-output/
+          retention-days: 14

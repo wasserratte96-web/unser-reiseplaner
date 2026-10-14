@@ -1,0 +1,358 @@
+{
+  "version": "1.5.1",
+  "started": "2026-10-13T14:08:21.078Z",
+  "viewport": {
+    "width": 412,
+    "height": 892
+  },
+  "providerMode": "Deterministic fixtures, not proof of live service availability",
+  "checks": [
+    {
+      "id": "fresh-start-no-example",
+      "pass": true,
+      "detail": "Erststart soll keine ungefragte Beispielreise anlegen"
+    },
+    {
+      "id": "global-navigation-hidden",
+      "pass": true,
+      "detail": "Reisenavigation auf Reise finden ausgeblendet"
+    },
+    {
+      "id": "first-launch-mobile-width",
+      "pass": true,
+      "detail": "{\"viewport\":412,\"width\":412}"
+    },
+    {
+      "id": "01-first-launch.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "public-hides-extras",
+      "pass": true,
+      "detail": "Taxi-/Shuttle-Extras bei Nur ÖPNV verborgen"
+    },
+    {
+      "id": "multicountry-wizard",
+      "pass": true,
+      "detail": "Zwei Länder und ÖPNV gespeichert"
+    },
+    {
+      "id": "created-trip-reload",
+      "pass": true,
+      "detail": "Reise bleibt nach Neuladen erhalten"
+    },
+    {
+      "id": "02-create-trip.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "wishlist-mobile-width",
+      "pass": true,
+      "detail": "{\"viewport\":412,\"width\":412}"
+    },
+    {
+      "id": "fitz-access-budget",
+      "pass": true,
+      "detail": "Hinweg 120 + Aufenthalt 45 + Rückweg 120 Minuten"
+    },
+    {
+      "id": "original-variant-preserved",
+      "pass": true,
+      "detail": "Original bleibt unverändert"
+    },
+    {
+      "id": "no-car-in-public-draft",
+      "pass": true,
+      "detail": "Keine Autofahrt eingeschleust"
+    },
+    {
+      "id": "edit-keeps-access",
+      "pass": true,
+      "detail": "Umbenennen muss Ausgangsort und Rückweg behalten"
+    },
+    {
+      "id": "03-fitz-roy.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "year-inputs-survive-mode",
+      "pass": true,
+      "detail": "Wechsel der Suchrichtung behält Eingaben"
+    },
+    {
+      "id": "season-comparison-visible",
+      "pass": true,
+      "detail": "Zwölf Monate mit Zielabgleich"
+    },
+    {
+      "id": "season-explanation",
+      "pass": true,
+      "detail": "Monatsauswahl erklärt passende Ziele"
+    },
+    {
+      "id": "04-year-planner.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "manual-search-add",
+      "pass": true,
+      "detail": "Manuelle Ortssuche ergänzt Wunschliste"
+    },
+    {
+      "id": "05-search-and-failure.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "failure-recovery-visible",
+      "pass": true,
+      "detail": "Nach Suchfehler bleiben erneute Suche und eigener Ort möglich"
+    },
+    {
+      "id": "06-network-failure.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "unknown-location-not-scheduled",
+      "pass": true,
+      "detail": "Ein Wunsch ohne Besuchsort darf nicht als zeitlich geplanter Ausflug erscheinen"
+    },
+    {
+      "id": "07-missing-location.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "delete-undo-visible",
+      "pass": true,
+      "detail": "Wunsch entfernen bietet Rückgängig"
+    },
+    {
+      "id": "delete-undo-restores",
+      "pass": true,
+      "detail": "Rückgängig stellt Wunsch wieder her"
+    },
+    {
+      "id": "08-wish-delete-undo.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "access-form-mobile-width",
+      "pass": true,
+      "detail": "{\"viewport\":412,\"width\":412}"
+    },
+    {
+      "id": "dialog-escape-closes",
+      "pass": true,
+      "detail": "Dialog lässt sich per Escape schließen"
+    },
+    {
+      "id": "09-modal-overflow.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "public-filter-excludes-incompatible",
+      "pass": true,
+      "detail": "Nur ÖPNV soll unpassende Treffer ausfiltern"
+    },
+    {
+      "id": "10-year-public-only.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "booked-nights-allow-excursion",
+      "pass": true,
+      "detail": "Gebuchte Nächte dürfen nicht sämtliche Ausflugstage sperren"
+    },
+    {
+      "id": "booking-still-present",
+      "pass": true,
+      "detail": "Buchungsdaten bleiben erhalten"
+    },
+    {
+      "id": "11-booked-stay.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "walk-limit-is-per-day",
+      "pass": true,
+      "detail": "300 Minuten Gehzeit gelten für die Summe aller Ausflüge pro Tag"
+    },
+    {
+      "id": "12-daily-walking.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "airport-hints-visible",
+      "pass": true,
+      "detail": "Hinweise für gewählte Flughafencodes vorhanden"
+    },
+    {
+      "id": "terminal-markers",
+      "pass": true,
+      "detail": "Abflug- und Ankunftspunkt auf Leaflet-Karte"
+    },
+    {
+      "id": "terminals-persist",
+      "pass": true,
+      "detail": "Beide ausgewählten Kartenpunkte bleiben nach Neuladen erhalten"
+    },
+    {
+      "id": "13-terminals-map.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "photo-window-with-approach",
+      "pass": true,
+      "detail": "Start um 09 Uhr ergibt Aufnahme ab 11 Uhr mit 120 Minuten Hinweg"
+    },
+    {
+      "id": "14-photo-window.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "unknown-leg-is-visible",
+      "pass": true,
+      "detail": "Fehlende Verbindung zwischen Aktivitäten muss sichtbar bleiben"
+    },
+    {
+      "id": "15-unknown-leg.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "backup-includes-wishes",
+      "pass": true,
+      "detail": "Export enthält die gespeicherte Wunschliste"
+    },
+    {
+      "id": "backup-roundtrip",
+      "pass": true,
+      "detail": "Export und Import behalten Reise und Wünsche"
+    },
+    {
+      "id": "16-backup.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "custom-location-no-coordinate-typing",
+      "pass": true,
+      "detail": "Eigenen Ort über Suchtreffer statt manuelle Koordinaten ergänzen"
+    },
+    {
+      "id": "17-custom-location.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    },
+    {
+      "id": "small-screen-wishes",
+      "pass": true,
+      "detail": "{\"viewport\":360,\"width\":360}"
+    },
+    {
+      "id": "wish-actions-readable",
+      "pass": true,
+      "detail": "[{\"text\":\"Ausflug bearbeiten\",\"width\":96.671875,\"height\":44,\"client\":95,\"scroll\":95},{\"text\":\"Zeit & Wünsche\",\"width\":96.671875,\"height\":44,\"client\":95,\"scroll\":95},{\"text\":\"Ort bearbeiten\",\"width\":96.671875,\"height\":44,\"client\":95,\"scroll\":95},{\"text\":\"↑\",\"width\":44,\"height\":44,\"client\":42,\"scroll\":42},{\"text\":\"↓\",\"width\":44,\"height\":44,\"client\":42,\"scroll\":42},{\"text\":\"×\",\"width\":44,\"height\":44,\"client\":42,\"scroll\":42}]"
+    },
+    {
+      "id": "small-screen-access",
+      "pass": true,
+      "detail": "{\"viewport\":360,\"width\":360}"
+    },
+    {
+      "id": "18-small-screen.runtime",
+      "pass": true,
+      "detail": "Keine JavaScript-Ausnahme"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "01-first-launch",
+      "complete": true
+    },
+    {
+      "name": "02-create-trip",
+      "complete": true
+    },
+    {
+      "name": "03-fitz-roy",
+      "complete": true
+    },
+    {
+      "name": "04-year-planner",
+      "complete": true
+    },
+    {
+      "name": "05-search-and-failure",
+      "complete": true
+    },
+    {
+      "name": "06-network-failure",
+      "complete": true
+    },
+    {
+      "name": "07-missing-location",
+      "complete": true
+    },
+    {
+      "name": "08-wish-delete-undo",
+      "complete": true
+    },
+    {
+      "name": "09-modal-overflow",
+      "complete": true
+    },
+    {
+      "name": "10-year-public-only",
+      "complete": true
+    },
+    {
+      "name": "11-booked-stay",
+      "complete": true
+    },
+    {
+      "name": "12-daily-walking",
+      "complete": true
+    },
+    {
+      "name": "13-terminals-map",
+      "complete": true
+    },
+    {
+      "name": "14-photo-window",
+      "complete": true
+    },
+    {
+      "name": "15-unknown-leg",
+      "complete": true
+    },
+    {
+      "name": "16-backup",
+      "complete": true
+    },
+    {
+      "name": "17-custom-location",
+      "complete": true
+    },
+    {
+      "name": "18-small-screen",
+      "complete": true
+    }
+  ],
+  "finished": "2026-10-13T14:09:05.887Z",
+  "passed": 54,
+  "failed": 0
+}

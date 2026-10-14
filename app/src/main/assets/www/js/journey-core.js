@@ -26,6 +26,7 @@
       const v=input[k];out[k]=v==null||String(v).trim()===''?null:Number(v);
       if(out[k]!==null&&(!Number.isFinite(out[k])||out[k]<0||out[k]>1440))throw new Error('Wegzeiten zwischen 0 und 1440 Minuten eingeben.');
     }
+    if(out.mode==='walk'&&out.outboundMin!==null&&out.returnMin!==null)out.walkMin=Math.max(out.walkMin||0,out.outboundMin+out.returnMin);
     return out;
   }
   function directions(from,to,mode='transit'){
@@ -54,15 +55,15 @@
       const transit=p.access==='public'?'ÖPNV und Fußwege grundsätzlich nutzbar':p.access==='assisted'?'Für Naturziele Transfer oder Tour prüfen':'Zugang je Ziel noch prüfen';
       const compatible=!mobility||policy(mobility).mode!=='public'||p.access!=='assisted';
       return {...p,compatible,enoughDays:Number(days)>=p.minDays,transit};
-    }).sort((a,b)=>Number(b.compatible)-Number(a.compatible)||Number(b.enoughDays)-Number(a.enoughDays)||a.name.localeCompare(b.name,'de'));
+    }).filter(p=>p.compatible).sort((a,b)=>Number(b.compatible)-Number(a.compatible)||Number(b.enoughDays)-Number(a.enoughDays)||a.name.localeCompare(b.name,'de'));
   }
-  function draft(wishes,{days,mobility,dayStart='08:00',dayEnd='20:00',dayBudgets={},occupied=[],existingKeys=[],origin=''}={}){
+  function draft(wishes,{days,mobility,dayStart='08:00',dayEnd='20:00',dayBudgets={},lodgings={},occupied=[],existingKeys=[],origin=''}={}){
     const p=policy(mobility),reserved=new Set(occupied),existing=new Set(existingKeys),result=days.map(d=>({date:d,events:[],reserved:reserved.has(d)}));
     const returnDay=origin?result.findLast(d=>!d.reserved):null;if(returnDay)returnDay.reserved=true;
     const deferred=[],included=[],defaultStart=P.minutes(dayStart),defaultEnd=P.minutes(dayEnd);let start=defaultStart,end=defaultEnd;
     if(start===null||end===null||end<=start)throw new Error('Tageszeiten prüfen.');
     let index=0,cursor=start,lastBase='',lastNode=null;
-    const budget=()=>{const b=dayBudgets[result[index]?.date];start=P.minutes(b?.start)||defaultStart;end=P.minutes(b?.end)||defaultEnd;};
+    const budget=()=>{const b=dayBudgets[result[index]?.date];start=P.minutes(b?.start)??defaultStart;end=P.minutes(b?.end)??defaultEnd;};
     const seek=()=>{budget();while(index<result.length&&(result[index].reserved||cursor>=end)){index++;budget();cursor=start;}cursor=Math.max(cursor,start);return index<result.length;};
     const next=()=>{index++;budget();cursor=start;return seek();};
     for(const wish of wishes){
@@ -70,9 +71,12 @@
       const snapshot={index,cursor,lastBase,lastNode,events:result.map(d=>d.events.length)};
       let reason='';let a;
       try{a=access(wish.access);}catch(e){deferred.push({...wish,reason:e.message});continue;}
+      if(!a&&!P.hasLocation(wish)){deferred.push({...wish,reason:wish.kind==='wildlife'?'Zuerst einen konkreten Beobachtungsort oder Ausgangsort für diesen Tierwunsch auswählen.':'Zuerst den Standort suchen oder einen Ausgangsort und Zugang ergänzen.'});continue;}
       if(a&&!allowed(a.mode,p))reason='Der Zugang braucht ein nicht erlaubtes Verkehrsmittel.';
       if(a&&a.walkMin!==null&&a.walkMin>p.maxWalkMin)reason='Der Fußweg überschreitet deine gewählte Gehzeit.';
       const base=a?{name:a.baseName,lat:a.baseLat,lng:a.baseLng}:wish;
+      const lodgingMatches=()=>!(lodgings[result[index]?.date]||[]).length||(lodgings[result[index]?.date]||[]).some(h=>P.hasLocation(base)&&P.hasLocation(h)?P.distance(base,h)<=30:norm(h.name).includes(norm(base.name)));
+      const walkingUsed=()=>result[index].events.filter(e=>e.type==='visit').reduce((n,e)=>n+(e.access?.walkMin||0),0);
       const baseKey=norm(base.name)+'|'+(P.hasLocation(base)?`${base.lat},${base.lng}`:'');
       const visit=P.duration(wish),known=!a||(a.outboundMin!==null&&a.returnMin!==null),total=known?visit+(a?.outboundMin||0)+(a?.returnMin||0):null;
       if(known&&total>Math.max(defaultEnd-defaultStart,...Object.values(dayBudgets).map(b=>(P.minutes(b.end)||defaultEnd)-(P.minutes(b.start)||defaultStart))))reason='Hinweg, Aufenthalt und Rückweg passen nicht in einen Tag.';
@@ -87,10 +91,14 @@
       if(!reason&&!lastBase&&origin){result[index].events.push({type:'arrival',from:{name:origin},to:base,mode:'other'});if(!next())reason='Nach der Anreise fehlt ein Aufenthaltstag.';}
       for(let n=0;!reason&&n<Math.max(1,Math.min(30,+wish.stayDays||1));n++){
         if(n>0&&!next()){reason='Für die Aufenthaltsdauer fehlen freie Tage.';break;}
+        while(!lodgingMatches()||walkingUsed()+(a?.walkMin||0)>p.maxWalkMin){const lodgingBlocked=!lodgingMatches();if(!next()){reason=lodgingBlocked?'Kein freier Tag passt zum Ausgangsort und zur gebuchten Unterkunft.':'Für die tägliche Gehzeitgrenze fehlt ein weiterer freier Tag.';break;}}
+        if(reason)break;
         let when=cursor;
         if(photoStart!==null)when=Math.max(when,photoStart-(a?.outboundMin||0));
         if(known&&(when+total>end||(photoEnd!==null&&when+(a?.outboundMin||0)+visit>photoEnd))){
           if(!next()){reason='Kein freier Tag für diesen Wunsch.';break;}
+          while(!lodgingMatches()){if(!next()){reason='Kein freier Tag passt zum Ausgangsort und zur gebuchten Unterkunft.';break;}}
+          if(reason)break;
           when=photoStart!==null?Math.max(start,photoStart-(a?.outboundMin||0)):start;
         }
         if(known&&(when+total>end||(photoEnd!==null&&when+(a?.outboundMin||0)+visit>photoEnd))){reason='Fotozeitfenster und Zugang passen nicht in die Tageszeiten.';break;}

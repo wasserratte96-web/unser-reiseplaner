@@ -14,3 +14,7 @@ release-signing.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# Browser tests
+node_modules/
+qa-output/
