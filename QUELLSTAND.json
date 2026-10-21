@@ -10,7 +10,16 @@
     "functionalTestsPassed": 63,
     "structureAndSyntax": "passed"
   },
-  "browserAndAndroidChecks": "pending",
+  "browserAndAndroidChecks": {
+    "browserRun": 39640169839,
+    "androidRun": 39640169849,
+    "browserScenarios": 24,
+    "browserChecksPassed": 88,
+    "functionalTestsPassed": 63,
+    "androidBuildAndLint": "passed"
+  },
   "previousEvidence": "PRUEFBERICHT_1_5_1.md and docs/qa-1.5.1/",
-  "trigger": "Explicit Go in the project chat; future rounds require a new Go."
+  "trigger": "Explicit Go in the project chat; future rounds require a new Go.",
+  "testedAppCommit": "6cc1c4d707a07419868de26396cc7c173b7827ca",
+  "packageNotes": "Abschlussdokumentation und Manifest nach dem geprüften Commit ergänzt; App-Code und Browserabläufe unverändert."
 }
