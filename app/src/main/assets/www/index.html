@@ -24,16 +24,29 @@
       </div>
     </header>
 
-    <nav id="tripWorkspace" class="trip-workspace" hidden aria-label="Diese Reise"><button data-workspace="wishlist">Wünsche</button><button data-workspace="plan">Tagesplan</button><button data-workspace="map">Karte</button><button data-workspace="discover">+ Entdecken</button></nav>
+    <nav id="tripWorkspace" class="trip-workspace" hidden aria-label="Diese Reise"><button data-workspace="wishlist">Wünsche</button><button data-workspace="plan">Tagesplan</button><button data-workspace="map">Karte</button><button data-workspace="discover">Entdecken</button></nav>
     <main>
       <section class="view" id="view-find">
         <div class="pagehead"><div><p class="step-label">Ideen für deine nächste Reise</p><h1>Was möchtest du erleben?</h1><p>Finde passende Jahreszeiten und Regionen.</p></div></div>
-        <div class="year-controls"><label>Ich kenne …<select id="yearKind"><option value="time">meinen Reisezeitraum</option><option value="goals">meine Wunschziele</option></select></label><label id="yearMonthLabel">Reisemonat<select id="yearMonth"><option value="1">Januar</option><option value="2">Februar</option><option value="3">März</option><option value="4">April</option><option value="5">Mai</option><option value="6">Juni</option><option value="7">Juli</option><option value="8">August</option><option value="9">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Dezember</option></select></label><label>Verfügbare Tage<input id="yearDays" type="number" min="1" max="366" value="14"></label><label>Interesse<select id="yearInterest"><option value="all">Alles</option><option value="wildlife">Wildlife</option><option value="nature">Natur</option><option value="city">Städte</option><option value="photo">Fotografie</option></select></label><label class="year-query">Ort, Tier oder Motiv<input id="yearQuery" type="search" placeholder="Fitz Roy, Pinguine, Street …"></label><label class="checkline"><input id="yearPublic" type="checkbox">Nur ÖPNV und Fußwege</label><button id="yearSearch" class="primary">Passende Ideen zeigen</button></div>
+        <div class="year-controls">
+          <label>Ich kenne …<select id="yearKind"><option value="time">meinen Reisezeitraum</option><option value="goals">meine Wunschziele</option></select></label>
+          <label id="yearMonthLabel">Reisemonat<select id="yearMonth"><option value="1">Januar</option><option value="2">Februar</option><option value="3">März</option><option value="4">April</option><option value="5">Mai</option><option value="6">Juni</option><option value="7">Juli</option><option value="8">August</option><option value="9">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Dezember</option></select></label>
+          <label class="year-query"><span id="yearQueryLabel">Ort, Tier oder Motiv (optional)</span><input id="yearQuery" type="search" placeholder="z. B. Fitz Roy oder Pinguine"></label>
+          <details id="yearAdvanced" class="form-details year-advanced"><summary>Suche verfeinern<span id="yearFilterSummary" class="option-summary"></span></summary><div class="formgrid"><label>Verfügbare Tage<input id="yearDays" type="number" min="1" max="366" value="14"></label><label>Interesse<select id="yearInterest"><option value="all">Alles</option><option value="wildlife">Wildlife</option><option value="nature">Natur</option><option value="city">Städte</option><option value="photo">Fotografie</option></select></label><label class="checkline span2"><input id="yearPublic" type="checkbox">Nur ÖPNV und Fußwege</label></div></details>
+          <button id="yearSearch" class="primary">Passende Ideen zeigen</button>
+        </div>
         <div id="seasonComparison" hidden></div><div id="yearResults" class="year-results" aria-live="polite"></div>
-        <p class="tiny">Startsammlung mit 20 Regionsprofilen. Saisonorientierung statt Wetter- oder Sichtungsprognose; unbekannte Zugänge bleiben erkennbar.</p><button id="newTripFromFind">Eigene Reise anlegen</button>
+        <p class="tiny">Die Vorschläge geben eine saisonale Orientierung. Wetter, Tierbeobachtungen und passende Verbindungen bitte für deine Reise prüfen.</p><button id="newTripFromFind">Eigene Reise anlegen</button>
       </section>
       <section class="view active" id="view-trips">
         <div class="pagehead"><div><h1>Deine Reisen</h1><p>Aus Vorfreude wird ein Plan.</p></div><button class="primary" id="newTripBtn">+ Reise</button></div>
+        <div id="tripWelcome" class="welcome-card" hidden>
+          <div class="welcome-symbol" aria-hidden="true">↗</div>
+          <h1>Deine nächste Reise beginnt hier.</h1>
+          <p>Sammle deine Wünsche und mache daraus einen übersichtlichen Reiseplan.</p>
+          <div class="welcome-actions"><button class="primary" id="startTripBtn">Neue Reise planen <span aria-hidden="true">→</span></button><button data-goto="find">Reiseidee finden</button></div>
+          <p class="welcome-hint">Ziel & Zeitraum wählen · Wünsche sammeln · Tage planen</p>
+        </div>
         <div id="tripCards" class="cardstack"></div>
       </section>
 
@@ -106,7 +119,7 @@
       </section>
     </main>
 
-    <nav class="bottomnav" aria-label="Hauptnavigation"><button data-view="find"><span>⌕</span><small>Reise finden</small></button><button data-view="trips" class="active"><span>▤</span><small>Meine Reisen</small></button></nav>
+    <nav class="bottomnav" aria-label="Hauptnavigation"><button data-view="find"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><small>Reise finden</small></button><button data-view="trips" class="active"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="14" rx="3"/><path d="M9 7V5a3 3 0 0 1 6 0v2M9 11v6m6-6v6"/></svg><small>Meine Reisen</small></button></nav>
   </div>
 
   <div id="modal" class="modal hidden"><div class="modalbackdrop" data-close="1"></div><div class="sheet"><div class="sheethandle"></div><div id="modalContent" role="dialog" aria-modal="true" aria-label="Reisedetails"></div></div></div>

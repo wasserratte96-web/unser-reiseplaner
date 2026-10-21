@@ -1,14 +1,16 @@
-# Geprüfte Überarbeitung 1.5.1
+# UX-Überarbeitung 1.5.2
 
-Basis: 1.5.0. Änderungen: CHANGELOG.md. Installation: UPDATE_1_5_1_TERMUX.md. Prüfungen und Grenzen: PRUEFBERICHT_1_5_1.md.
+Basis: main 1.5.1. Änderungen: CHANGELOG.md. Updateweg: UPDATE_1_5_2_TERMUX.md. UX-Prüfung und Grenzen: docs/UX_1_5_2.md.
 
 Browserabläufe: `npm install --prefix tests/browser --ignore-scripts`, anschließend `tests/browser/node_modules/.bin/playwright install chromium` und `node tests/browser/walkthrough.cjs`. Die getrennten Browserabhängigkeiten sind für den normalen Termux-Updateweg nicht erforderlich.
 
-# Unser Reiseplaner – Version 1.5.0
+# Unser Reiseplaner – Version 1.5.2
 
-Android-App für individuelle Natur-, Wildlife-, Städte- und Fotoreisen. Grundlage ist GitHub-Version 1.4.0 (`e1611d74f9d20e4edb8eb32016c136774b243db3`).
+Android-App für individuelle Natur-, Wildlife-, Städte- und Fotoreisen. Grundlage ist GitHub-Version 1.5.1 (`18559e155ffe95d349be18a5ed483d0904ddc971`).
 
 ## Einstieg
+
+Beim ersten Start führen „Neue Reise planen“ und „Reiseidee finden“ direkt zur gewünschten Aufgabe. Zusätzliche Filter und Formulareinstellungen werden passend zum Bedarf aufgeklappt.
 
 **Reise finden** zeigt passende Regionen für einen Reisemonat oder vergleicht die Jahreszeiten mehrerer Wunschziele. Die Startsammlung umfasst 20 Regionsprofile mit Quellen. Eine Empfehlung ist eine redaktionelle Orientierung; Wetter, Tierbeobachtungen, Tickets und tatsächliche Erreichbarkeit müssen separat geprüft werden.
 
