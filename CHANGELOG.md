@@ -12,6 +12,14 @@
 - Update-Skript vergleicht Dateiinhalte per Prüfsumme; Änderungen werden auch bei gleicher Dateigröße und gleichem Änderungszeitpunkt übernommen.
 - Wiederholbare Browserabläufe und gezielte Regressionen ergänzt. Browserdatenquellen sind Testantworten; kein nativer Android-Gerätetest.
 
+## 1.5.2 – Einfache Standardbedienung (2026-10-21)
+
+- Klarer Erststart mit Reiseanlage und optionaler Inspiration.
+- Suchfilter, zusätzliche Fortbewegungseinstellungen und Ausflugsdetails gezielt aufklappen; aktive Einschränkungen bleiben sichtbar.
+- Aktive Reisebereiche sind in der Navigation eindeutig zugeordnet.
+- Einheitlichere Bedienflächen, größere Zusatztexte und besser bedienbare Dialoge.
+- Datenschema und Planungslogik unverändert; Update von Quellstand 1.5.1 vorgesehen.
+
 ## 1.5.0 — 2026-10-12
 
 - Zwei Hauptbereiche: Reise finden und Meine Reisen; Reisebereiche Wünsche, Tagesplan, Karte und Entdecken. Aufklappbare Tage, Varianten unter einem Menü, geführte Neuanlage in drei Schritten.

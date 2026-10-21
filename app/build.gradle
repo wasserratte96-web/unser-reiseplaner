@@ -6,8 +6,8 @@ dependencies {
     implementation 'androidx.activity:activity:1.10.1'
 }
 
-def ciVersionName = (project.findProperty('ciVersionName') ?: '1.5.1').toString()
-def ciVersionCode = (project.findProperty('ciVersionCode') ?: '13').toString().toInteger()
+def ciVersionName = (project.findProperty('ciVersionName') ?: '1.5.2').toString()
+def ciVersionCode = (project.findProperty('ciVersionCode') ?: '14').toString().toInteger()
 def signingPath = System.getenv('URP_KEYSTORE_PATH')
 
 android {
