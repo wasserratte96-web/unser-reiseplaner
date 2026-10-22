@@ -17,7 +17,7 @@ const WISH_PRIORITIES={must:{label:'Muss',weight:4},high:{label:'Hoch',weight:3}
 
 const UPDATE_REPOSITORY = 'wasserratte96-web/unser-reiseplaner';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`;
-let installedAppVersion = {versionName:'1.5.1',versionCode:13,repository:UPDATE_REPOSITORY};
+let installedAppVersion = {versionName:'1.5.2',versionCode:14,repository:UPDATE_REPOSITORY};
 let availableUpdate = null;
 
 let state = null;
@@ -174,8 +174,18 @@ function ensureActive(){if(!activeTrip()&&state.trips.length)state.activeTripId=
 function cloneVersion(v,newName){const c=JSON.parse(JSON.stringify(v));c.id=uid('ver');c.name=newName||`${v.name} – Kopie`;c.createdAt=Date.now();const stopMap=new Map(),flightMap=new Map(),connectionMap=new Map();c.days.forEach(d=>{d.id=uid('day');d.stops.forEach(s=>{const old=s.id;s.id=uid('stop');stopMap.set(old,s.id)});});(c.flights||[]).forEach(f=>{const old=f.id;f.id=uid('flight');flightMap.set(old,f.id)});(c.connections||[]).forEach(x=>{const old=x.id;x.id=uid('conn');connectionMap.set(old,x.id)});c.transfers=(c.transfers||[]).map(x=>({...x,id:uid('transfer'),flightId:flightMap.get(x.flightId)||x.flightId,sourceRef:(x.sourceRef|| (x.flightId?`flight:${x.flightId}`:'' )).replace(/^flight:(.+)$/,(m,id)=>`flight:${flightMap.get(id)||id}`).replace(/^connection:(.+)$/,(m,id)=>`connection:${connectionMap.get(id)||id}`),toStopId:stopMap.get(x.toStopId)||x.toStopId}));return c}
 
 let modalReturnFocus=null;
-function showModal(html,onReady){if($('#modal').classList.contains('hidden'))modalReturnFocus=document.activeElement;const generation=++modalGeneration;$('#modalContent').innerHTML=html;$('#modal').classList.remove('hidden');if(onReady)onReady();if(generation===modalGeneration){$('#modal .sheet')?.scrollTo?.(0,0);$('#modalContent input, #modalContent button')?.focus?.({preventScroll:true});}}
-function closeModal(){modalGeneration++;$('#modal').classList.add('hidden');$('#modalContent').innerHTML='';modalReturnFocus?.focus?.();}
+function showModal(html,onReady){
+  if($('#modal').classList.contains('hidden'))modalReturnFocus=document.activeElement;
+  const generation=++modalGeneration;$('#modalContent').innerHTML=html;$('#modal').classList.remove('hidden');$('#app').inert=true;
+  const heading=$('#modalContent h2');if(heading){heading.id='modalHeading';$('#modalContent').setAttribute('aria-labelledby','modalHeading');}
+  if(onReady)onReady();
+  if(generation===modalGeneration){
+    $('#modal .sheet')?.scrollTo?.(0,0);
+    const first=$$('#modalContent input, #modalContent select, #modalContent textarea, #modalContent summary, #modalContent button, #modalContent a[href]').find(el=>!el.disabled&&el.getClientRects?.().length);
+    first?.focus?.({preventScroll:true});
+  }
+}
+function closeModal(){modalGeneration++;$('#modal').classList.add('hidden');$('#modalContent').innerHTML='';$('#app').inert=false;modalReturnFocus?.focus?.();}
 
 // ------------------------- Free data providers -------------------------
 const OVERPASS_ENDPOINTS=[
@@ -533,7 +543,8 @@ function versionMetrics(v){
 }
 function renderTrips(){
   const box=$('#tripCards');box.innerHTML='';
-  if(!state.trips.length){box.innerHTML='<div class="empty wish-empty"><h2>Wohin zieht es dich?</h2><p>Lege deine erste Reise an. Ein Land oder mehrere – alles passt in einen Plan.</p></div>';return;}
+  $('#tripWelcome').hidden=state.trips.length>0;$('#view-trips').classList.toggle('is-empty',!state.trips.length);
+  if(!state.trips.length)return;
   for(const trip of state.trips){const v=trip.versions.find(x=>x.id===trip.selectedVersionId)||trip.versions[0],metrics=versionMetrics(v),photo=(trip.wishlist||[]).find(x=>Discovery.safeUrl(x.item?.photo))?.item?.photo;const el=document.createElement('article');el.className=`tripcard ${trip.id===state.activeTripId?'active':''}`;
     el.innerHTML=`${photo?`<img class="trip-cover" src="${esc(photo)}" alt="Reiseziel aus deiner Wunschliste" loading="lazy">`:''}<div class="triptitle"><div><span class="trip-kicker">${trip.id===state.activeTripId?'Aktuelle Reise':'Deine Reise'}</span><h2>${esc(trip.title)}</h2><div class="tripmeta">${esc(countryLabel(trip))}</div></div><button data-trip-menu="${trip.id}" aria-label="${esc(trip.title)} bearbeiten">•••</button></div><p class="trip-dates">${fmtShortDate(v?.startDate)} – ${fmtShortDate(v?.endDate)}</p><div class="tripstats"><div class="metric"><b>${metrics.days}</b><small>Tage</small></div><div class="metric"><b>${trip.wishlist?.length||0}</b><small>Wünsche</small></div><div class="metric"><b>${trip.versions.length}</b><small>Varianten</small></div></div><div class="actions trip-actions"><button class="primary" data-open-trip="${trip.id}">Reiseplan öffnen →</button><button data-new-version="${trip.id}">Variante erstellen</button></div>`;box.appendChild(el);
   }
@@ -1359,9 +1370,18 @@ let undoSnapshot=null;
 function checkpoint(label){undoSnapshot={label,state:JSON.stringify(state)};$('#undoChange').hidden=false;}
 function undoChange(){if(!undoSnapshot)return;state=normalizeLoadedState(JSON.parse(undoSnapshot.state));undoSnapshot=null;$('#undoChange').hidden=true;persistSoon();renderAll();toast('Letzte Änderung rückgängig gemacht.');}
 function mobilityFields(p={}){
-  p=Journey.policy(p);return `<label>Unterwegs mit<select id="journeyMobility">${Object.entries(Journey.labels).map(([k,v])=>`<option value="${k}" ${p.mode===k?'selected':''}>${v}</option>`).join('')}</select></label><label class="checkline"><input id="journeyFlights" type="checkbox" ${p.allowFlights?'checked':''}>Flüge erlauben</label><div id="journeyExtras"><label class="checkline"><input id="journeyTaxi" type="checkbox" ${p.allowTaxi?'checked':''}>Taxi erlauben</label><label class="checkline"><input id="journeyShuttle" type="checkbox" ${p.allowShuttle?'checked':''}>Shuttle erlauben</label><label class="checkline"><input id="journeyTours" type="checkbox" ${p.allowTours?'checked':''}>Organisierte Ausflüge erlauben</label></div><label>Höchstens Gehzeit pro Tag (Minuten)<input id="journeyWalk" type="number" min="0" max="900" step="30" value="${p.maxWalkMin}"></label>`;
+  p=Journey.policy(p);
+  return `<label>Unterwegs mit<select id="journeyMobility">${Object.entries(Journey.labels).map(([k,v])=>`<option value="${k}" ${p.mode===k?'selected':''}>${v}</option>`).join('')}</select></label><p id="mobilitySummary" class="selection-summary" aria-live="polite"></p><details id="mobilityAdvanced" class="form-details"><summary>Flüge, Transfers und Gehzeit anpassen</summary><div class="formgrid one"><label class="checkline"><input id="journeyFlights" type="checkbox" ${p.allowFlights?'checked':''}>Flüge erlauben</label><div id="journeyExtras"><label class="checkline"><input id="journeyTaxi" type="checkbox" ${p.allowTaxi?'checked':''}>Taxi erlauben</label><label class="checkline"><input id="journeyShuttle" type="checkbox" ${p.allowShuttle?'checked':''}>Shuttle erlauben</label><label class="checkline"><input id="journeyTours" type="checkbox" ${p.allowTours?'checked':''}>Organisierte Ausflüge erlauben</label></div><label>Gehzeit pro Tag (Minuten)<input id="journeyWalk" type="number" min="0" max="900" step="30" value="${p.maxWalkMin}"></label></div></details>`;
 }
-function bindMobility(){const change=()=>{$('#journeyExtras').hidden=$('#journeyMobility').value==='public';};$('#journeyMobility').onchange=change;change();}
+function bindMobility(){
+  const change=()=>{
+    const p=readMobility();$('#journeyExtras').hidden=p.mode==='public';
+    const extras=[p.allowTaxi?'Taxi':'',p.allowShuttle?'Shuttle':'',p.allowTours?'organisierte Ausflüge':''].filter(Boolean);
+    $('#mobilitySummary').textContent=[p.allowFlights?'Flüge erlaubt':'Ohne Flüge',`Zu Fuß: höchstens ${durText(p.maxWalkMin)} pro Tag`,p.mode!=='public'?`Zusätzlich: ${extras.join(', ')||'keine Transfers gewählt'}`:''].filter(Boolean).join(' · ');
+  };
+  ['journeyMobility','journeyFlights','journeyTaxi','journeyShuttle','journeyTours','journeyWalk'].forEach(id=>$('#'+id).onchange=change);
+  $('#journeyWalk').oninput=change;change();
+}
 function readMobility(){return Journey.policy({mode:$('#journeyMobility').value,allowFlights:$('#journeyFlights').checked,allowTaxi:$('#journeyTaxi').checked,allowTours:$('#journeyTours').checked,allowShuttle:$('#journeyShuttle').checked,maxWalkMin:$('#journeyWalk').value});}
 function mobilityModal(){const t=activeTrip();if(!t)return;showModal(`<h2>Wie möchtest du reisen?</h2><div class="formgrid one">${mobilityFields(t.mobility)}</div><p id="mobilityError" role="alert"></p><div class="actions"><button data-close-modal>Abbrechen</button><button id="saveMobility" class="primary">Speichern</button></div>`,()=>{bindMobility();$('#saveMobility').onclick=()=>{checkpoint('Fortbewegung');t.mobility=readMobility();persistSoon();closeModal();renderAll();};});}
 function newJourneyWizard(seed={}){
@@ -1389,6 +1409,7 @@ function renderFind(){
   yearSelection=new Set(state.yearSelection||[]);
   const prefs=state.yearPreferences||{},kind=prefs.kind||'time',month=Number(prefs.month)||new Date().getMonth()+1;
   $('#yearKind').value=kind;$('#yearMonth').value=month;$('#yearDays').value=prefs.days||14;$('#yearQuery').value=prefs.query||'';$('#yearInterest').value=prefs.interest||'all';$('#yearPublic').checked=prefs.publicOnly===true;$('#yearMonthLabel').hidden=kind==='goals';
+  $('#yearQueryLabel').textContent=kind==='goals'?'Was möchtest du sehen?':'Ort, Tier oder Motiv (optional)';updateYearFilterSummary();
   const results=Journey.matchProfiles(Catalog.profiles,{month:kind==='time'?month:null,query:prefs.query||'',interest:prefs.interest||'all',days:prefs.days||14,mobility:prefs.publicOnly?{mode:'public'}:null});
   $('#seasonComparison').hidden=kind!=='goals';
   if(kind==='goals'){
@@ -1401,8 +1422,13 @@ function profileModal(id){const p=Catalog.profiles.find(x=>x.id===id);if(!p)retu
 function yearTrip(id){const p=Catalog.profiles.find(x=>x.id===id);if(!p)return;closeModal();const pref=state.yearPreferences||{},now=new Date(),month=Number(pref.month)||now.getMonth()+1,year=now.getFullYear()+(month<now.getMonth()+1?1:0),start=`${year}-${String(month).padStart(2,'0')}-01`;newJourneyWizard({title:p.name,profile:p,start:pref.kind==='goals'?'':start,end:pref.kind==='goals'?'':addDays(start,Math.max(1,Math.min(366,pref.days||14))-1),countries:[p.countryCode],mobility:{mode:pref.publicOnly?'public':'assisted',allowFlights:true}});}
 function accessModal(key){
   const t=activeTrip(),wish=t?.wishlist.find(x=>x.key===key);if(!wish)return;let draft=JSON.parse(JSON.stringify(wish.access||{baseName:'',mode:'walk'})),generation;
-  const show=()=>{showModal(`<h2>Ausgangsort und Ausflug</h2><p>${esc(wish.name)}</p><label>Vorlage (optional)<select id="accessPreset"><option value="">Eigene Angaben</option>${Catalog.excursions.map(p=>`<option value="${p.id}" ${draft.id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label><div class="formgrid one"><label>Übernachtungs- / Ausgangsort<input id="accessBase" value="${esc(draft.baseName)}" placeholder="z. B. El Chaltén"></label><button id="accessSearch">Ausgangsort auf der Karte suchen</button><div id="accessCandidates"></div><details class="form-details"><summary>Koordinaten des Ausgangsorts (optional)</summary><div class="formgrid"><label>Breitengrad<input id="accessLat" inputmode="decimal" value="${draft.baseLat??''}"></label><label>Längengrad<input id="accessLng" inputmode="decimal" value="${draft.baseLng??''}"></label></div></details><label>Zugang<select id="accessMode">${['walk','transit','bus','train','ferry','shuttle','tour','car','taxi'].map(m=>`<option value="${m}" ${draft.mode===m?'selected':''}>${MODES[m]||({shuttle:'Shuttle',tour:'Organisierter Ausflug'}[m])}</option>`).join('')}</select></label><div class="formgrid"><label>Hinweg (min)<input id="accessOut" type="number" min="0" value="${draft.outboundMin??''}"></label><label>Rückweg (min)<input id="accessBack" type="number" min="0" value="${draft.returnMin??''}"></label><label>Davon zu Fuß gesamt (min)<input id="accessWalk" type="number" min="0" value="${draft.walkMin??''}"></label></div><label>Quelle / Betreiberlink<input id="accessSource" type="url" value="${esc(draft.source||'')}"></label><label>Hinweise<textarea id="accessNote">${esc(draft.note||'')}</textarea></label></div><p class="tiny">Wegzeiten sind eigene Planungsbudgets. Leere Felder bleiben offen; Aufenthalts- und Fotozeit kommen hinzu.</p><p id="accessError" role="alert"></p><div class="actions"><button data-close-modal>Abbrechen</button><button id="accessRemove">Zugang entfernen</button><button id="accessSave" class="primary">Speichern</button></div>`,()=>{
+  const show=()=>{showModal(`<h2>Dein Ausflug</h2><p>${esc(wish.name)}</p><label>Vorlage (optional)<select id="accessPreset"><option value="">Eigene Angaben</option>${Catalog.excursions.map(p=>`<option value="${p.id}" ${draft.id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label><div class="formgrid one"><label>Ausgangsort<input id="accessBase" value="${esc(draft.baseName)}" placeholder="z. B. El Chaltén"></label><button id="accessSearch">Ort suchen</button><div id="accessCandidates"></div><label>Zugang<select id="accessMode">${['walk','transit','bus','train','ferry','shuttle','tour','car','taxi'].map(m=>`<option value="${m}" ${draft.mode===m?'selected':''}>${MODES[m]||({shuttle:'Shuttle',tour:'Organisierter Ausflug'}[m])}</option>`).join('')}</select></label><p id="accessTimeSummary" class="selection-summary" aria-live="polite"></p><details id="accessTiming" class="form-details" ${draft.outboundMin==null||draft.returnMin==null?'open':''}><summary>Wegzeiten anpassen</summary><div class="formgrid"><label>Hinweg (min)<input id="accessOut" type="number" min="0" value="${draft.outboundMin??''}"></label><label>Rückweg (min)<input id="accessBack" type="number" min="0" value="${draft.returnMin??''}"></label><label>Davon zu Fuß gesamt (min)<input id="accessWalk" type="number" min="0" value="${draft.walkMin??''}"></label></div></details><details id="accessMore" class="form-details"><summary>Quelle, Hinweise und Koordinaten${draft.source||draft.note?' · vorhanden':''}</summary><div class="formgrid one"><label>Quelle / Betreiberlink<input id="accessSource" type="url" value="${esc(draft.source||'')}"></label><label>Hinweise<textarea id="accessNote">${esc(draft.note||'')}</textarea></label></div><details class="form-details"><summary>Koordinaten des Ausgangsorts (optional)</summary><div class="formgrid"><label>Breitengrad<input id="accessLat" inputmode="decimal" value="${draft.baseLat??''}"></label><label>Längengrad<input id="accessLng" inputmode="decimal" value="${draft.baseLng??''}"></label></div></details><button id="accessRemove" class="danger" ${wish.access?'':'hidden'}>Zugang entfernen</button></details></div><p class="tiny">Wegzeiten sind eigene Planungsbudgets. Leere Felder bleiben offen; Aufenthalts- und Fotozeit kommen hinzu.</p><p id="accessError" role="alert"></p><div class="actions"><button data-close-modal>Abbrechen</button><button id="accessSave" class="primary">Speichern</button></div>`,()=>{
     generation=modalGeneration;
+    const updateTimes=()=>{
+      const time=id=>$('#'+id).value===''?'offen':durText(Number($('#'+id).value));
+      $('#accessTimeSummary').textContent=`Hinweg: ${time('accessOut')} · Rückweg: ${time('accessBack')}${$('#accessWalk').value!==''?' · davon zu Fuß: '+time('accessWalk'):''}`;
+    };
+    ['accessOut','accessBack','accessWalk'].forEach(id=>$('#'+id).oninput=updateTimes);updateTimes();
     $('#accessPreset').onchange=()=>{const p=Catalog.excursions.find(p=>p.id===$('#accessPreset').value);if(p){draft={...p};show();}};
     $('#accessSearch').onclick=async()=>{const target=$('#accessCandidates'),q=$('#accessBase').value.trim();if(!q)return;target.textContent='Orte werden gesucht …';try{const items=await Providers.geocode(q,5,{countryCodes:wish.countryCode?[wish.countryCode]:Discovery.countriesForTrip(t).map(c=>c.code)});if(modalGeneration!==generation)return;target.innerHTML=items.map((p,i)=>`<button data-access-candidate="${i}">${esc(p.displayName||p.name)}</button>`).join('')||'Kein Treffer. Koordinaten können manuell ergänzt werden.';$$('[data-access-candidate]').forEach(b=>b.onclick=()=>{const p=items[+b.dataset.accessCandidate];$('#accessBase').value=p.name;$('#accessLat').value=p.lat;$('#accessLng').value=p.lng;});}catch(e){if(modalGeneration===generation)target.textContent=e.message;}};
     $('#accessRemove').onclick=()=>{checkpoint('Ausflug');delete wish.access;persistSoon();closeModal();renderAll();};
@@ -1462,9 +1488,19 @@ function renderJourneyPlan(){
     html+=`<details class="journey-day" ${day.collapsed===false||(day.collapsed==null&&di===0)?'open':''} data-journey-day="${day.id}"><summary><span>Tag ${di+1} · ${fmtShortDate(day.date)}</span><strong>${esc(day.baseStay?.name||day.stops.find(s=>s.type==='city')?.name||(events.length?'Reisetag':'Noch frei'))}</strong><small>${events.length} ${events.length===1?'Eintrag':'Einträge'}${unknown?' · Zeiten offen':''}${comp.conflicts.length?' · Zeitkonflikt':''}</small></summary><div class="journey-day-body">${day.planningNote?`<p>${esc(day.planningNote)}</p>`:''}${comp.conflicts.length?`<p class="warnline">${comp.conflicts.map(esc).join(' · ')}</p>`:''}${comp.notices.map(n=>`<p class="warnline">${esc(n)}</p>`).join('')}${events.map(e=>e.html).join('')||'<p>Noch frei. Füge einen Wunsch oder eine Aktivität hinzu.</p>'}${accommodationsForDate(v,day.date).map(x=>`<p class="night-row">Übernachtung: ${esc(x.stop.name)} <button data-edit-stop="${x.stop.id}">Bearbeiten</button></p>`).join('')}${day.baseStay&&!accommodationsForDate(v,day.date).length?`<p class="night-row">Unterkunft in ${esc(day.baseStay.name)} noch auswählen.</p>`:''}<div class="actions"><button data-day-add="${day.id}">+ Aktivität</button><button data-day-accommodation="${day.id}">+ Unterkunft</button><button data-day-time="${day.id}">Tageszeiten</button></div></div></details>`;
   });$('#daysTimeline').innerHTML=html;$('#toggleAllDays').textContent=v.days.every(d=>d.collapsed)?'Tage ausklappen':'Tage einklappen';$$('[data-journey-day]').forEach(el=>el.ontoggle=()=>{const day=v.days.find(d=>d.id===el.dataset.journeyDay);if(day){day.collapsed=!el.open;persistSoon();}});
 }
-function journeyChrome(){const tripViews=['plan','wishlist','discover','map','compare'];$('#tripWorkspace').hidden=!tripViews.includes(currentView);$('#contextRow').hidden=!tripViews.includes(currentView);$$('[data-workspace]').forEach(b=>b.classList.toggle('active',b.dataset.workspace===currentView));}
+function journeyChrome(){
+  const inTrip=['plan','wishlist','discover','map','compare'].includes(currentView);
+  $('#tripWorkspace').hidden=!inTrip;$('#contextRow').hidden=!inTrip;
+  for(const b of $$('[data-workspace]')){const selected=b.dataset.workspace===currentView;b.classList.toggle('active',selected);selected?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current');}
+  for(const b of $$('.bottomnav button')){const selected=b.dataset.view===(inTrip?'trips':currentView);b.classList.toggle('active',selected);selected?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current');}
+}
+function updateYearFilterSummary(){
+  const interest={all:'alle Interessen',wildlife:'Wildlife',nature:'Natur',city:'Städte',photo:'Fotografie'}[$('#yearInterest').value];
+  $('#yearFilterSummary').textContent=[`${$('#yearDays').value||14} Tage`,interest,$('#yearPublic').checked?'nur ÖPNV':''].filter(Boolean).join(' · ');
+}
 function bindJourneyEvents(){
-  $('#undoChange').onclick=undoChange;$('#newTripFromFind').onclick=()=>newJourneyWizard();$('#newTripBtn').onclick=()=>newJourneyWizard();$('#autoRouteBtn').onclick=journeyRouteModal;
+  $('#undoChange').onclick=undoChange;$('#newTripFromFind').onclick=()=>newJourneyWizard();$('#newTripBtn').onclick=()=>newJourneyWizard();$('#startTripBtn').onclick=()=>newJourneyWizard();$('#autoRouteBtn').onclick=journeyRouteModal;
+  ['yearDays','yearInterest','yearPublic'].forEach(id=>$('#'+id).onchange=updateYearFilterSummary);$('#yearDays').oninput=updateYearFilterSummary;
   $('#yearSearch').onclick=()=>{state.yearPreferences={kind:$('#yearKind').value,month:+$('#yearMonth').value,days:+$('#yearDays').value||14,query:$('#yearQuery').value.trim(),interest:$('#yearInterest').value,publicOnly:$('#yearPublic').checked};persistSoon();renderFind();};
   $('#yearKind').onchange=()=>{state.yearPreferences={kind:$('#yearKind').value,month:+$('#yearMonth').value,days:+$('#yearDays').value||14,query:$('#yearQuery').value.trim(),interest:$('#yearInterest').value,publicOnly:$('#yearPublic').checked};persistSoon();renderFind();};
   document.addEventListener('click',e=>{const d=e.target.closest('button')?.dataset||{};
@@ -1475,7 +1511,7 @@ function bindJourneyEvents(){
   });
 }
 
-function boot(){loadState();bindEvents();bindJourneyEvents();readInstalledVersion();renderAll();switchView(state.trips.length?'trips':'find');maybeAutoCheckUpdate();}
+function boot(){loadState();bindEvents();bindJourneyEvents();readInstalledVersion();renderAll();switchView('trips');maybeAutoCheckUpdate();}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 
 })();
